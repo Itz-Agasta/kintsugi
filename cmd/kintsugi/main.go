@@ -6,18 +6,24 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"slices"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/Itz-Agasta/kintsugi/internal/agents"
 	"github.com/Itz-Agasta/kintsugi/internal/model"
 	"github.com/Itz-Agasta/kintsugi/internal/repair"
 	"github.com/Itz-Agasta/kintsugi/internal/scenario"
+	"github.com/Itz-Agasta/kintsugi/internal/server"
 	"github.com/Itz-Agasta/kintsugi/internal/store"
 )
 
 const usage = `usage:
+  kintsugi serve
   kintsugi scenario <clean|demo>
   kintsugi repair <graph> <source>
   kintsugi diff <graph> <graph>`
@@ -36,6 +42,8 @@ func run(args []string) error {
 		return err
 	}
 	switch {
+	case len(args) == 1 && args[0] == "serve":
+		return runServe(ctx, db)
 	case len(args) == 2 && args[0] == "scenario" && (args[1] == "clean" || args[1] == "demo"):
 		return runScenario(ctx, db, args[1])
 	case len(args) == 3 && args[0] == "repair":
@@ -44,6 +52,42 @@ func run(args []string) error {
 		return runDiff(db, args[1], args[2])
 	}
 	return fmt.Errorf("%s", usage)
+}
+
+func runServe(ctx context.Context, db *falkordb.FalkorDB) error {
+	m, err := models(ctx, db)
+	if err != nil {
+		return err
+	}
+	cfg := server.Config{
+		CleanGraph:   "clean",
+		Prefix:       "demo-",
+		RunPace:      envMillis("RUN_PACE_MS", 120),
+		RepairPace:   envMillis("REPAIR_PACE_MS", 250),
+		Idle:         time.Duration(envInt("SESSION_IDLE_MIN", 60)) * time.Minute,
+		MaxSessions:  envInt("MAX_SESSIONS", 20),
+		AllowOrigins: strings.Split(cmp.Or(os.Getenv("ALLOW_ORIGINS"), "http://localhost:5173"), ","),
+	}
+	s := server.New(db, m.w, m.d, m.dr, cfg)
+	if err := s.Start(ctx); err != nil {
+		return err
+	}
+	addr := ":" + cmp.Or(os.Getenv("PORT"), "8080")
+	fmt.Fprintf(os.Stderr, "listening on %s\n", addr)
+	// No write timeout: the run and repair streams stay open for a while.
+	srv := &http.Server{Addr: addr, Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	return srv.ListenAndServe()
+}
+
+func envInt(key string, def int) int {
+	if n, err := strconv.Atoi(os.Getenv(key)); err == nil {
+		return n
+	}
+	return def
+}
+
+func envMillis(key string, def int) time.Duration {
+	return time.Duration(envInt(key, def)) * time.Millisecond
 }
 
 func runScenario(ctx context.Context, db *falkordb.FalkorDB, name string) error {

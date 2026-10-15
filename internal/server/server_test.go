@@ -255,7 +255,9 @@ func TestRepairStreamAndPath(t *testing.T) {
 	for _, e := range evs {
 		switch e.name {
 		case "report":
-			var rep struct{ Compensation []any }
+			var rep struct {
+				Compensation []any `json:"compensation"`
+			}
 			json.Unmarshal(e.data, &rep)
 			if len(rep.Compensation) != 10 {
 				t.Errorf("report: %d compensation items, want 10", len(rep.Compensation))
