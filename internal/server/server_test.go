@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/Itz-Agasta/kintsugi/internal/model"
 	"github.com/Itz-Agasta/kintsugi/internal/server"
 	"github.com/Itz-Agasta/kintsugi/internal/store/storetest"
@@ -372,5 +373,45 @@ func TestStartCleansUpAndBuildsClean(t *testing.T) {
 	res.Next()
 	if n, _ := res.Record().GetByIndex(0); n.(int64) != 61 {
 		t.Errorf("clean graph has %v actions, want 61", n)
+	}
+}
+
+func TestStartRebuildsPartialClean(t *testing.T) {
+	db := storetest.DB(t)
+	_, _, cfg := newServer(t, nil)
+	if _, err := db.SelectGraph(cfg.CleanGraph).Query("CREATE (:Action {id: 'half-done'})", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	s := server.New(db, model.FakeWriter{}, model.FakeDecider{}, model.FakeDrafter{}, cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	res, err := db.SelectGraph(cfg.CleanGraph).Query("MATCH (a:Action) RETURN count(a)", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Next()
+	if n, _ := res.Record().GetByIndex(0); n.(int64) != 61 {
+		t.Errorf("clean graph has %v actions after startup, want a full rebuild of 61", n)
+	}
+}
+
+func TestResetReportsDeleteFailure(t *testing.T) {
+	dead, err := falkordb.FalkorDBNew(&falkordb.ConnectionOption{Addr: "localhost:1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := server.New(dead, model.FakeWriter{}, model.FakeDecider{}, model.FakeDrafter{}, server.Config{Prefix: "x-", MaxSessions: 5, Idle: time.Hour})
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	resp, err := http.Post(ts.URL+"/api/reset?session="+randID(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 500 {
+		t.Errorf("reset with an unreachable database: HTTP %d, want 500", resp.StatusCode)
 	}
 }

@@ -241,3 +241,10 @@ const GraphEdges = `
 MATCH (a)-[r]->(b)
 WHERE NOT a:Repair AND NOT b:Draft
 RETURN a.id, type(r), b.id`
+
+// The clean baseline gets a marker only after its run finished, so a run
+// cut off halfway is rebuilt instead of trusted.
+
+const MarkBaseline = `CREATE (:Baseline {complete: true})`
+
+const BaselineDone = `MATCH (b:Baseline {complete: true}) RETURN count(b)`

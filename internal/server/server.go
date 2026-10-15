@@ -107,6 +107,16 @@ func (s *Server) withSession(exclusive bool, h func(http.ResponseWriter, *http.R
 				http.Error(w, "this session is busy", http.StatusConflict)
 				return
 			}
+			// A reset between session() and TryLock leaves sess stale, and a
+			// newer request may already own the graph under a new session.
+			s.mu.Lock()
+			current := s.sessions[id] == sess
+			s.mu.Unlock()
+			if !current {
+				sess.mu.Unlock()
+				http.Error(w, "this session was reset, try again", http.StatusConflict)
+				return
+			}
 			defer sess.mu.Unlock()
 		}
 		h(w, r, s.db.SelectGraph(s.cfg.Prefix+id))
@@ -148,18 +158,23 @@ func (s *Server) evictLRU() bool {
 	if oldest == "" {
 		return false
 	}
-	s.drop(oldest)
+	if err := s.drop(oldest); err != nil {
+		s.sessions[oldest].mu.Unlock()
+		return false
+	}
 	return true
 }
 
-// drop deletes a session and its graph. s.mu and the session lock must be
-// held. The lock is left held: the session is gone, and a request still
-// holding a pointer to it gets 409 instead of running on a deleted graph.
-func (s *Server) drop(id string) {
+// drop deletes a session's graph, then the session. s.mu and the session
+// lock must be held. If the delete fails the session stays, so the graph is
+// still tracked and the next sweep tries again.
+func (s *Server) drop(id string) error {
 	if err := deleteGraph(s.db.SelectGraph(s.cfg.Prefix + id)); err != nil {
 		log.Printf("drop %s: %v", id, err)
+		return err
 	}
 	delete(s.sessions, id)
+	return nil
 }
 
 // Sweep drops every session idle for longer than cfg.Idle.
@@ -168,7 +183,9 @@ func (s *Server) Sweep() {
 	defer s.mu.Unlock()
 	for id, sess := range s.sessions {
 		if time.Since(sess.last) > s.cfg.Idle && sess.mu.TryLock() {
-			s.drop(id)
+			if err := s.drop(id); err != nil {
+				sess.mu.Unlock()
+			}
 		}
 	}
 }
@@ -187,7 +204,7 @@ func (s *Server) Start(ctx context.Context) error {
 			}
 		}
 	}
-	res, err := rows(s.db.SelectGraph(s.cfg.CleanGraph), "MATCH (a:Action) RETURN count(a)", nil)
+	res, err := rows(s.db.SelectGraph(s.cfg.CleanGraph), store.BaselineDone, nil)
 	if err != nil {
 		return err
 	}
@@ -198,6 +215,9 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		if err := scenario.Run(ctx, g, false, s.w, s.d, nil); err != nil {
 			return fmt.Errorf("building %s: %w", s.cfg.CleanGraph, err)
+		}
+		if _, err := g.Query(store.MarkBaseline, nil, nil); err != nil {
+			return err
 		}
 	}
 	go func() {
@@ -358,8 +378,12 @@ func (s *Server) repairStream(w http.ResponseWriter, r *http.Request, g *falkord
 func (s *Server) reset(w http.ResponseWriter, r *http.Request, g *falkordb.Graph) {
 	id := strings.TrimPrefix(g.Id, s.cfg.Prefix)
 	s.mu.Lock()
-	s.drop(id)
+	err := s.drop(id)
 	s.mu.Unlock()
+	if err != nil {
+		http.Error(w, "could not reset: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, map[string]bool{"reset": true})
 }
 
