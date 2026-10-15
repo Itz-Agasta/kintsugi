@@ -296,3 +296,93 @@ func TestDuplicateHandoffsMatchOneToOne(t *testing.T) {
 		t.Errorf("x children with the new payload: %d, want 1", n)
 	}
 }
+
+// runToy records good, bad and then the given agents on one ticket.
+func runToy(t *testing.T, ags map[string]recorder.AgentFunc, order ...string) *falkordb.Graph {
+	t.Helper()
+	g := storetest.Graph(t)
+	q := recorder.NewQueue(g, ags)
+	for _, a := range order {
+		q.Enqueue(recorder.Job{Agent: a, TicketID: "t1", Payload: json.RawMessage(`{}`)})
+	}
+	if err := q.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return g
+}
+
+// A poisoned action never should have run, so what it sent goes to
+// compensation and what it handed off to is superseded, not re-run.
+func TestPoisonedActionEffectsAndHandoffs(t *testing.T) {
+	ags := map[string]recorder.AgentFunc{
+		"bad": func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error {
+			if err := r.Ingest("bad-src", "web", "u"); err != nil {
+				return err
+			}
+			if err := r.Effect("email", 0); err != nil {
+				return err
+			}
+			return r.Handoff("x", struct{}{})
+		},
+		"x": func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error { return r.Effect("refund", 10) },
+	}
+	g := runToy(t, ags, "bad")
+	rep, err := repair.Run(context.Background(), g, "bad-src", ags, model.FakeDrafter{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Counts["superseded"] != 1 || rep.Counts["rerun_changed"]+rep.Counts["rerun_same"] != 0 {
+		t.Errorf("counts = %v, want x superseded and nothing re-run", rep.Counts)
+	}
+	if len(rep.Compensation) != 2 {
+		t.Errorf("compensation: %d items, want the email and the refund", len(rep.Compensation))
+	}
+}
+
+// A changed replay that no longer writes a key retires its old version, and
+// later readers re-run without it.
+func TestReplayDropsUnwrittenKey(t *testing.T) {
+	ags := map[string]recorder.AgentFunc{
+		"good": func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error {
+			if err := r.Ingest("good-src", "web", "u"); err != nil {
+				return err
+			}
+			return r.Set("k", "clean")
+		},
+		"bad": func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error {
+			if err := r.Ingest("bad-src", "web", "u"); err != nil {
+				return err
+			}
+			return r.Set("k", "bad")
+		},
+		"w": func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error {
+			v, _, err := r.Get("k")
+			if err != nil {
+				return err
+			}
+			if v == "bad" {
+				if err := r.Set("extra", "from bad"); err != nil {
+					return err
+				}
+			}
+			return r.Finish(map[string]any{"k": v})
+		},
+		"r": func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error {
+			v, _, err := r.Get("extra")
+			if err != nil {
+				return err
+			}
+			return r.Finish(map[string]any{"extra": v})
+		},
+	}
+	g := runToy(t, ags, "good", "bad", "w", "r")
+	if _, err := repair.Run(context.Background(), g, "bad-src", ags, model.FakeDrafter{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, g, "MATCH (f:Fact {key:'extra', active:true}) RETURN count(f)"); n != 0 {
+		t.Errorf("active extra facts: %d, want 0", n)
+	}
+	if n := count(t, g, `MATCH (a:Action {tool:'r', status:'rerun_changed'}) WHERE a.output = '{"extra":""}' RETURN count(a)`); n != 1 {
+		t.Error("reader r was not re-run without the dropped key")
+	}
+}

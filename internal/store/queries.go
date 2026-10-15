@@ -80,11 +80,14 @@ MATCH (s:Source {id: $src})<-[:INGESTED]-(a0:Action)
 MATCH (a0)-[:FEEDS|HANDED_OFF*0..]->(a:Action)
 RETURN DISTINCT a ORDER BY a.seq`
 
-// Mask marks the actions that ingested the bad source and turns off the
-// facts they wrote.
+// Mask marks every action that ingested the bad source, whether or not it
+// wrote anything, and turns off the facts it wrote.
 const Mask = `
-MATCH (s:Source {id: $src})<-[:INGESTED]-(a:Action)-[:WROTE]->(f:Fact)
-SET a.status = 'poisoned', f.active = false`
+MATCH (s:Source {id: $src})<-[:INGESTED]-(a:Action)
+SET a.status = 'poisoned'
+WITH a
+OPTIONAL MATCH (a)-[:WROTE]->(f:Fact)
+FOREACH (x IN CASE WHEN f IS NULL THEN [] ELSE [f] END | SET x.active = false)`
 
 // ReadLatestActive is the latest active version of a key before a reader.
 const ReadLatestActive = `
@@ -197,6 +200,11 @@ SET e.live = false, e.invalidated_by = $rid`
 const OldChildren = `
 MATCH (:Action {id: $id})-[:HANDED_OFF]->(c:Action)
 RETURN c.id, c.tool, c.ticket_id, c.seq`
+
+// OwnKeys lists the keys an action currently has active versions of.
+const OwnKeys = `
+MATCH (:Action {id: $id})-[:WROTE]->(f:Fact {active: true})
+RETURN DISTINCT f.key`
 
 const SetPayload = `MATCH (a:Action {id: $id}) SET a.payload = $payload`
 

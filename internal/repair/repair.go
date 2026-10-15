@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/Itz-Agasta/kintsugi/internal/model"
@@ -74,19 +75,25 @@ func Run(ctx context.Context, g *falkordb.Graph, source string, agents map[strin
 	if err != nil {
 		return nil, err
 	}
-	isPoisoned := map[string]bool{}
-	for _, r := range poisoned {
-		isPoisoned[r[0].(string)] = true
-		e.emit(r, "poisoned")
-	}
 	blast, err := e.rows(store.BlastRadius, src)
 	if err != nil {
 		return nil, err
 	}
 	for _, r := range blast {
 		a := r[0].(*falkordb.Node)
-		if id := a.Properties["id"].(string); !isPoisoned[id] {
-			e.pending[id] = a.Properties["seq"].(float64)
+		e.pending[a.Properties["id"].(string)] = a.Properties["seq"].(float64)
+	}
+	// A poisoned action never should have run: what it sent is now wrong, and
+	// what it handed off to only exists because of it.
+	for _, r := range poisoned {
+		id := r[0].(string)
+		delete(e.pending, id)
+		e.emit(r, "poisoned")
+		if err := e.exec(store.InvalidateEffects, map[string]any{"id": id, "rid": e.rid}); err != nil {
+			return nil, err
+		}
+		if err := e.supersede(id, []any{}); err != nil {
+			return nil, err
 		}
 	}
 
@@ -152,11 +159,28 @@ func (e *engine) replay(a recorder.ActionRef) (*recorder.Held, error) {
 	if !ok {
 		return nil, fmt.Errorf("repair: unknown agent %q", a.Tool)
 	}
+	before, err := e.rows(store.OwnKeys, map[string]any{"id": a.ID})
+	if err != nil {
+		return nil, err
+	}
 	held, err := recorder.Replay(e.ctx, e.g, a, fn)
 	if err != nil {
 		return nil, fmt.Errorf("repair: re-running %s %s: %w", a.Tool, a.TicketID, err)
 	}
-	for _, key := range held.Wrote {
+	// Keys written before but not this time are retired, and their readers
+	// re-run without them.
+	touched := held.Wrote
+	for _, r := range before {
+		key := r[0].(string)
+		if slices.Contains(held.Wrote, key) {
+			continue
+		}
+		if err := e.exec(store.DeactivateOwn, map[string]any{"aid": a.ID, "key": key}); err != nil {
+			return nil, err
+		}
+		touched = append(touched, key)
+	}
+	for _, key := range touched {
 		readers, err := e.rows(store.LinkLateReaders, map[string]any{"writer": a.ID, "key": key})
 		if err != nil {
 			return nil, err
@@ -219,13 +243,8 @@ func (e *engine) handoffs(parent recorder.ActionRef, hs []recorder.Job) (float64
 	}
 	// Supersede before creating new actions: they are children of the same
 	// parent and are not in keep.
-	gone, err := e.rows(store.Supersede, map[string]any{"parent": parent.ID, "keep": keep, "rid": e.rid})
-	if err != nil {
+	if err := e.supersede(parent.ID, keep); err != nil {
 		return 0, err
-	}
-	for _, r := range gone {
-		delete(e.pending, r[0].(string))
-		e.emit(r, "superseded")
 	}
 	for _, h := range unmatched {
 		if last, err = e.runNew(h, last); err != nil {
@@ -233,6 +252,20 @@ func (e *engine) handoffs(parent recorder.ActionRef, hs []recorder.Job) (float64
 		}
 	}
 	return last, nil
+}
+
+// supersede retires the HANDED_OFF children of parent that are not in keep,
+// and everything below them.
+func (e *engine) supersede(parent string, keep []any) error {
+	gone, err := e.rows(store.Supersede, map[string]any{"parent": parent, "keep": keep, "rid": e.rid})
+	if err != nil {
+		return err
+	}
+	for _, r := range gone {
+		delete(e.pending, r[0].(string))
+		e.emit(r, "superseded")
+	}
+	return nil
 }
 
 // runNew creates and runs an action that only exists because a re-run
