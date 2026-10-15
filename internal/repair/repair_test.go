@@ -386,3 +386,25 @@ func TestReplayDropsUnwrittenKey(t *testing.T) {
 		t.Error("reader r was not re-run without the dropped key")
 	}
 }
+
+// An action re-run with the same output still read different inputs, and its
+// input_hash must say so.
+func TestRerunSameUpdatesInputHash(t *testing.T) {
+	demo := build(t, true)
+	hash := func() any {
+		res, err := demo.Query("MATCH (a:Action {tool:'triage', ticket_id:'t01'}) RETURN a.input_hash", nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Next()
+		v, _ := res.Record().GetByIndex(0)
+		return v
+	}
+	before := hash()
+	if _, err := repair.Run(context.Background(), demo, scenario.PoisonSource, fakeAgents(), model.FakeDrafter{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if hash() == before {
+		t.Error("t01 triage is rerun_same but kept the poisoned input_hash")
+	}
+}

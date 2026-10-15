@@ -178,13 +178,13 @@ RETURN a.tool, a.ticket_id, a.seq, a.payload, a.status, a.output, a.output_hash`
 const SetStatus = `MATCH (a:Action {id: $id}) SET a.status = $status`
 
 // Reran records a re-run. The old output and hash stay on the RERAN edge;
-// the node takes the new ones only when the output changed.
+// the node takes the new inputs always and the new output only when it changed.
 const Reran = `
 MATCH (r:Repair {id: $rid}), (a:Action {id: $id})
 CREATE (r)-[:RERAN {old_output: a.output, old_hash: a.output_hash, new_hash: $output_hash}]->(a)
-SET a.status = $status
+SET a.status = $status, a.input_hash = $input_hash
 WITH a WHERE $status = 'rerun_changed'
-SET a.output = $output, a.output_hash = $output_hash, a.input_hash = $input_hash`
+SET a.output = $output, a.output_hash = $output_hash`
 
 // Created records an action that exists only because a re-run handed off
 // differently.
