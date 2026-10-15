@@ -26,8 +26,9 @@ func WorkersAIURL(accountID, model string) string {
 	return "https://api.cloudflare.com/client/v4/accounts/" + accountID + "/ai/run/@cf/cloudflare/" + model
 }
 
-// ClefPromptVersion is part of the cache key. Bump it when the questions change.
-const ClefPromptVersion = "triage-v1"
+// ClefPromptVersion is part of the cache key. Bump it when the questions or
+// the answer mapping change.
+const ClefPromptVersion = "triage-v2"
 
 var levels = []string{"none", "partial", "full"}
 
@@ -80,10 +81,11 @@ func (c *ClefDecider) Decide(ctx context.Context, t Ticket, facts []KV) (Decisio
 	}
 	d := Decision{Choice: ans.Answers.Choice.Choice, Level: "none"}
 	if d.Choice == "refund" {
+		// A refund is partial or full, so "none" (level 0) is not a candidate.
 		best := -1.0
-		for i, l := range levels {
+		for i := 1; i < len(levels); i++ {
 			if p := ans.Answers.Level.Probabilities[strconv.Itoa(i)]; p > best {
-				best, d.Level = p, l
+				best, d.Level = p, levels[i]
 			}
 		}
 	}

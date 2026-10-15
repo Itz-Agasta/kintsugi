@@ -5,6 +5,7 @@ package agents
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 
 	"github.com/Itz-Agasta/kintsugi/internal/model"
@@ -97,9 +98,13 @@ func refund(ctx context.Context, r *recorder.Rec, payload json.RawMessage) error
 	if err := json.Unmarshal(payload, &o); err != nil {
 		return err
 	}
-	o.Amount = o.Ticket.OrderAmount
-	if o.Level == "partial" {
-		o.Amount /= 2
+	switch o.Level {
+	case "full":
+		o.Amount = o.Ticket.OrderAmount
+	case "partial":
+		o.Amount = o.Ticket.OrderAmount / 2
+	default:
+		return fmt.Errorf("refund for %s: level %q is not partial or full", o.Ticket.ID, o.Level)
 	}
 	if err := r.Effect("refund", o.Amount); err != nil {
 		return err

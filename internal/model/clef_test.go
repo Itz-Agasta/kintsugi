@@ -69,3 +69,15 @@ func TestClefReportsAPIError(t *testing.T) {
 		t.Error("want an error on HTTP 400")
 	}
 }
+
+func TestClefRefundLevelIsNeverNone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"answers":{"choice":{"choice":"refund"},"level":{"probabilities":{"0":0.7,"1":0.1,"2":0.2}}}}`))
+	}))
+	defer srv.Close()
+	c := &ClefDecider{URL: srv.URL, Model: "clef-flash"}
+	got, err := c.Decide(context.Background(), Ticket{}, nil)
+	if err != nil || got != (Decision{Choice: "refund", Level: "full"}) {
+		t.Errorf("got %v %v, want refund full (best of partial and full)", got, err)
+	}
+}
