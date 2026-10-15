@@ -22,3 +22,10 @@ test-live:
 scenario:
     go run ./cmd/kintsugi scenario clean
     go run ./cmd/kintsugi scenario demo
+
+# Clean run, poisoned run, repair, then check the repair matches the clean run.
+demo:
+    go run ./cmd/kintsugi scenario clean
+    go run ./cmd/kintsugi scenario demo
+    go run ./cmd/kintsugi repair demo partner-blog/policy-update
+    go run ./cmd/kintsugi diff clean demo
