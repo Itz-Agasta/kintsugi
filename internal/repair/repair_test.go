@@ -19,7 +19,7 @@ import (
 func build(t *testing.T, poisoned bool) *falkordb.Graph {
 	t.Helper()
 	g := storetest.Graph(t)
-	if err := scenario.Run(context.Background(), g, poisoned, model.FakeWriter{}, model.FakeDecider{}); err != nil {
+	if err := scenario.Run(context.Background(), g, poisoned, model.FakeWriter{}, model.FakeDecider{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	return g

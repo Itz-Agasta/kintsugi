@@ -34,6 +34,9 @@ type ActionRef struct {
 // Queue runs jobs for one graph, one at a time, in FIFO order. That order
 // is the seq order, so it is also a valid re-execution order.
 type Queue struct {
+	// After, when set, is called once per action after it finishes.
+	After func(ActionRef)
+
 	g      *falkordb.Graph
 	agents map[string]AgentFunc
 	jobs   []Job
@@ -73,7 +76,12 @@ func (q *Queue) runOne(ctx context.Context, j Job) error {
 		return err
 	}
 	if !r.finished {
-		return r.Finish(map[string]any{})
+		if err := r.Finish(map[string]any{}); err != nil {
+			return err
+		}
+	}
+	if q.After != nil {
+		q.After(a)
 	}
 	return nil
 }

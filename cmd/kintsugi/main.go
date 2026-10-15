@@ -55,7 +55,7 @@ func runScenario(ctx context.Context, db *falkordb.FalkorDB, name string) error 
 	if err != nil {
 		return err
 	}
-	if err := scenario.Run(ctx, g, name == "demo", m.w, m.d); err != nil {
+	if err := scenario.Run(ctx, g, name == "demo", m.w, m.d, nil); err != nil {
 		return err
 	}
 	res, err := g.Query(store.Counts, nil, nil)
