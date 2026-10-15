@@ -59,3 +59,9 @@ SET a.output = $output, a.output_hash = $output_hash, a.input_hash = $input_hash
 const CacheGet = `MATCH (r:Response {key: $key}) RETURN r.body`
 
 const CachePut = `MERGE (r:Response {key: $key}) SET r.body = $body`
+
+// Counts summarises a graph after a run.
+const Counts = `
+OPTIONAL MATCH (a:Action) WITH count(a) AS actions
+OPTIONAL MATCH (f:Fact) WITH actions, count(f) AS facts
+OPTIONAL MATCH (e:Effect) RETURN actions, facts, count(e) AS effects`
