@@ -105,3 +105,29 @@ func TestDiffCountsDuplicates(t *testing.T) {
 		t.Errorf("diff = %v, want the one duplicate refund", diff)
 	}
 }
+
+func TestRepairDraftsCompensation(t *testing.T) {
+	demo := build(t, true)
+	rep, err := repair.Run(context.Background(), demo, scenario.PoisonSource, fakeAgents(), model.FakeDrafter{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range rep.Compensation {
+		if c.Draft == "" {
+			t.Errorf("no draft for %s %s", c.Kind, c.TicketID)
+		}
+	}
+	if n := count(t, demo, "MATCH (:Effect)-[:COMPENSATED_BY]->(d:Draft) WHERE d.text <> '' RETURN count(d)"); n != 10 {
+		t.Errorf("drafts in graph: %d, want 10", n)
+	}
+	if n := count(t, demo, "MATCH (d:Draft {kind:'refund_reversal'}) RETURN count(d)"); n != 5 {
+		t.Errorf("refund reversals: %d, want 5", n)
+	}
+	// 39 from the run, plus 6 written by repair (t04 refund and email, 4 reply emails). Drafts add none.
+	if n := count(t, demo, "MATCH (e:Effect) RETURN count(e)"); n != 45 {
+		t.Errorf("effects: %d, want 45", n)
+	}
+	if n := count(t, demo, "MATCH (e:Effect {sent: true}) RETURN count(e)"); n != 39 {
+		t.Errorf("sent effects: %d, want 39", n)
+	}
+}

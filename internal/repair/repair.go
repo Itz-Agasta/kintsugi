@@ -88,7 +88,7 @@ func Run(ctx context.Context, g *falkordb.Graph, source string, agents map[strin
 			return nil, err
 		}
 	}
-	return e.report()
+	return e.report(d)
 }
 
 // step decides one pending action: skip it, or re-run it.
@@ -244,7 +244,7 @@ func (e *engine) runNew(parent recorder.ActionRef, j recorder.Job) error {
 	return e.handoffs(a, held.Handoffs)
 }
 
-func (e *engine) report() (*Report, error) {
+func (e *engine) report(d model.Drafter) (*Report, error) {
 	rep := &Report{RepairID: e.rid, Counts: map[string]int{}}
 	counts, err := e.rows(store.StatusCounts, nil)
 	if err != nil {
@@ -258,9 +258,38 @@ func (e *engine) report() (*Report, error) {
 		return nil, err
 	}
 	for _, r := range comp {
-		rep.Compensation = append(rep.Compensation, CompItem{EffectID: r[0].(string), Kind: r[1].(string), TicketID: r[2].(string), ActionStatus: r[3].(string), Amount: r[4].(float64)})
+		c := CompItem{EffectID: r[0].(string), Kind: r[1].(string), TicketID: r[2].(string), ActionStatus: r[3].(string), Amount: r[4].(float64)}
+		if c.Draft, err = e.draft(d, c); err != nil {
+			return nil, err
+		}
+		rep.Compensation = append(rep.Compensation, c)
 	}
 	return rep, nil
+}
+
+// draft writes and stores the follow-up for one compensation item: a
+// correction email for an email, a reversal request for a refund.
+func (e *engine) draft(d model.Drafter, c CompItem) (string, error) {
+	kind := "correction_email"
+	if c.Kind == "refund" {
+		kind = "refund_reversal"
+	}
+	rows, err := e.rows(store.CompContext, map[string]any{"eid": c.EffectID, "rid": e.rid})
+	if err != nil {
+		return "", err
+	}
+	if len(rows) != 1 {
+		return "", fmt.Errorf("repair: %d triage decisions for ticket %s, want 1", len(rows), c.TicketID)
+	}
+	var t model.Ticket
+	if err := json.Unmarshal([]byte(rows[0][2].(string)), &t); err != nil {
+		return "", err
+	}
+	text, err := d.Draft(e.ctx, kind, t, rows[0][0].(string), rows[0][1].(string))
+	if err != nil {
+		return "", err
+	}
+	return text, e.exec(store.SaveDraft, map[string]any{"eid": c.EffectID, "kind": kind, "text": text})
 }
 
 func (e *engine) popMin() string {

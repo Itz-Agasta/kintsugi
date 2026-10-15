@@ -202,3 +202,17 @@ const NextSeq = `MATCH (a:Action) WHERE a.seq > $seq RETURN min(a.seq)`
 const StatusCounts = `
 MATCH (a:Action) WHERE a.status <> 'ok'
 RETURN a.status, count(a)`
+
+// CompContext is what a follow-up draft needs: what the action did before
+// repair, the ticket's current decision, and the ticket itself.
+const CompContext = `
+MATCH (a:Action)-[:CAUSED]->(:Effect {id: $eid})
+OPTIONAL MATCH (:Repair {id: $rid})-[rr:RERAN]->(a)
+WITH a, rr
+MATCH (t:Action {tool: 'triage', ticket_id: a.ticket_id})
+WHERE NOT t.status IN ['poisoned', 'superseded']
+RETURN coalesce(rr.old_output, a.output), t.output, t.payload`
+
+const SaveDraft = `
+MATCH (e:Effect {id: $eid})
+CREATE (e)-[:COMPENSATED_BY]->(:Draft {kind: $kind, text: $text})`
