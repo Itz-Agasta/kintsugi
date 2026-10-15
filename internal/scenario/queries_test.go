@@ -9,7 +9,7 @@ import (
 	"github.com/Itz-Agasta/kintsugi/internal/store"
 )
 
-// These run the Day 2 repair queries once against a recorded demo graph, to
+// These run the repair queries once against a recorded demo graph, to
 // prove FalkorDB accepts them and gives the answers the data implies.
 
 func query(t *testing.T, g *falkordb.Graph, name, q string, params map[string]any) []*falkordb.Record {
@@ -35,7 +35,7 @@ func actionID(t *testing.T, g *falkordb.Graph, tool, ticket string) string {
 	return v.(string)
 }
 
-func TestDay2QueriesRun(t *testing.T) {
+func TestRepairQueriesRun(t *testing.T) {
 	g := build(t, true)
 	src := map[string]any{"src": scenario.PoisonSource}
 

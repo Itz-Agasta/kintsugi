@@ -66,7 +66,7 @@ OPTIONAL MATCH (a:Action) WITH count(a) AS actions
 OPTIONAL MATCH (f:Fact) WITH actions, count(f) AS facts
 OPTIONAL MATCH (e:Effect) RETURN actions, facts, count(e) AS effects`
 
-// Repair queries (Day 2). See notes on each in the README graph model.
+// Repair queries.
 
 // BlastRadius is every action downstream of a bad source, across agents.
 const BlastRadius = `
