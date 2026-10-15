@@ -56,7 +56,7 @@ func lines(g *falkordb.Graph, q string) ([]string, error) {
 	for res.Next() {
 		var cols []string
 		for _, v := range res.Record().Values() {
-			cols = append(cols, fmt.Sprint(v))
+			cols = append(cols, fmt.Sprintf("%q", fmt.Sprint(v))) // quoted so a " | " inside a value cannot merge columns
 		}
 		out = append(out, strings.Join(cols, " | "))
 	}

@@ -2,6 +2,8 @@ package repair_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -129,5 +131,114 @@ func TestRepairDraftsCompensation(t *testing.T) {
 	}
 	if n := count(t, demo, "MATCH (e:Effect {sent: true}) RETURN count(e)"); n != 39 {
 		t.Errorf("sent effects: %d, want 39", n)
+	}
+}
+
+func TestDiffKeepsColumnsApart(t *testing.T) {
+	a, b := storetest.Graph(t), storetest.Graph(t)
+	if _, err := a.Query("CREATE (:Fact {key: 'a', value: 'b | c', seq: 1.0, active: true})", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Query("CREATE (:Fact {key: 'a | b', value: 'c', seq: 1.0, active: true})", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	diff, err := repair.Diff(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diff) != 2 {
+		t.Errorf("diff = %v, want 2 rows", diff)
+	}
+}
+
+// Two new siblings from one re-run must keep handoff order, so the second
+// sees what the first wrote, as it would in a normal run.
+func TestNewSiblingsKeepOrder(t *testing.T) {
+	g := storetest.Graph(t)
+	set := func(src, v string) recorder.AgentFunc {
+		return func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error {
+			if err := r.Ingest(src, "web", src); err != nil {
+				return err
+			}
+			return r.Set("k", v)
+		}
+	}
+	ags := map[string]recorder.AgentFunc{
+		"good": set("good-src", "clean"),
+		"bad":  set("bad-src", "bad"),
+		"p": func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error {
+			v, _, err := r.Get("k")
+			if err != nil {
+				return err
+			}
+			if err := r.Finish(map[string]any{"k": v}); err != nil || v != "clean" {
+				return err
+			}
+			if err := r.Handoff("x", struct{}{}); err != nil {
+				return err
+			}
+			return r.Handoff("y", struct{}{})
+		},
+		"x": func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error { return r.Set("m", "from x") },
+		"y": func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error {
+			v, _, err := r.Get("m")
+			if err != nil {
+				return err
+			}
+			return r.Finish(map[string]any{"saw": v})
+		},
+	}
+	q := recorder.NewQueue(g, ags)
+	for _, a := range []string{"good", "bad", "p"} {
+		q.Enqueue(recorder.Job{Agent: a, TicketID: "t1", Payload: json.RawMessage(`{}`)})
+	}
+	if err := q.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repair.Run(context.Background(), g, "bad-src", ags, model.FakeDrafter{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, g, "MATCH (x:Action {tool:'x', status:'new'}), (y:Action {tool:'y', status:'new'}) WHERE x.seq < y.seq RETURN count(*)"); n != 1 {
+		t.Error("new sibling y does not come after x")
+	}
+	res, err := g.Query("MATCH (y:Action {tool:'y'}) RETURN y.output", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Next()
+	if v, _ := res.Record().GetByIndex(0); v != `{"saw":"from x"}` {
+		t.Errorf("y output = %v, want it to see x's write", v)
+	}
+}
+
+type failingDrafter struct{}
+
+func (failingDrafter) Draft(context.Context, string, model.Ticket, string, string) (string, error) {
+	return "", errors.New("quota")
+}
+
+func TestDraftFailureKeepsReport(t *testing.T) {
+	demo := build(t, true)
+	rep, err := repair.Run(context.Background(), demo, scenario.PoisonSource, fakeAgents(), failingDrafter{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Compensation) != 10 {
+		t.Fatalf("compensation: %d items, want 10", len(rep.Compensation))
+	}
+	for _, c := range rep.Compensation {
+		if c.DraftErr == "" {
+			t.Errorf("%s %s: no draft error recorded", c.Kind, c.TicketID)
+		}
+	}
+}
+
+func TestSecondRepairRefused(t *testing.T) {
+	demo := build(t, true)
+	if _, err := repair.Run(context.Background(), demo, scenario.PoisonSource, fakeAgents(), model.FakeDrafter{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repair.Run(context.Background(), demo, scenario.PoisonSource, fakeAgents(), model.FakeDrafter{}, nil); err == nil {
+		t.Error("want an error repairing a graph that was already repaired")
 	}
 }

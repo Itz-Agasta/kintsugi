@@ -155,6 +155,10 @@ RETURN p ORDER BY length(p) LIMIT 1`
 
 // Repair engine bookkeeping.
 
+// RepairCount guards against a second repair on the same graph, which the
+// engine does not support: reset and run again instead.
+const RepairCount = `MATCH (r:Repair) RETURN count(r)`
+
 const CreateRepair = `CREATE (:Repair {id: $rid, source_id: $src, ts: timestamp()})`
 
 // MarkSourceBad returns how many sources matched, so an unknown id is an error.

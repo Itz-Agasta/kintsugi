@@ -91,7 +91,11 @@ func runRepair(ctx context.Context, db *falkordb.FalkorDB, graph, source string)
 	}
 	fmt.Printf("\ncannot be undone: %d\n", len(rep.Compensation))
 	for _, c := range rep.Compensation {
-		fmt.Printf("\n%s %s %.2f (%s)\n%s\n", c.TicketID, c.Kind, c.Amount, c.ActionStatus, c.Draft)
+		draft := c.Draft
+		if c.DraftErr != "" {
+			draft = "draft failed: " + c.DraftErr
+		}
+		fmt.Printf("\n%s %s %.2f (%s)\n%s\n", c.TicketID, c.Kind, c.Amount, c.ActionStatus, draft)
 	}
 	return nil
 }

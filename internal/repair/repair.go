@@ -27,7 +27,7 @@ type Event struct {
 type CompItem struct {
 	EffectID, Kind, TicketID, ActionStatus string
 	Amount                                 float64
-	Draft                                  string
+	Draft, DraftErr                        string
 }
 
 type Report struct {
@@ -50,6 +50,13 @@ func Run(ctx context.Context, g *falkordb.Graph, source string, agents map[strin
 	e := &engine{ctx: ctx, g: g, rid: newID(), agents: agents, onEvent: onEvent, pending: map[string]float64{}}
 	src := map[string]any{"src": source}
 
+	done, err := e.rows(store.RepairCount, nil)
+	if err != nil {
+		return nil, err
+	}
+	if done[0][0].(int64) > 0 {
+		return nil, fmt.Errorf("repair: graph %s was already repaired; reset it and run again", g.Id)
+	}
 	rows, err := e.rows(store.MarkSourceBad, src)
 	if err != nil {
 		return nil, err
@@ -135,7 +142,8 @@ func (e *engine) step(id string) error {
 	if err := e.writeEffects(id, held); err != nil {
 		return err
 	}
-	return e.handoffs(a, held.Handoffs)
+	_, err = e.handoffs(a, held.Handoffs)
+	return err
 }
 
 // replay re-runs a and queues every later reader of the keys it wrote.
@@ -176,11 +184,13 @@ func (e *engine) writeEffects(id string, held *recorder.Held) error {
 
 // handoffs matches a re-run's handoffs to the children it had before, by
 // agent and ticket. Matched children get the new payload, unmatched old ones
-// are superseded, and handoffs with no old child become new actions.
-func (e *engine) handoffs(parent recorder.ActionRef, hs []recorder.Job) error {
+// are superseded, and handoffs with no old child become new actions. It
+// returns the highest seq given to a new action, so later siblings go after.
+func (e *engine) handoffs(parent recorder.ActionRef, hs []recorder.Job) (float64, error) {
+	last := parent.Seq
 	old, err := e.rows(store.OldChildren, map[string]any{"id": parent.ID})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	var pairs []any
 	for _, h := range hs {
@@ -189,15 +199,15 @@ func (e *engine) handoffs(parent recorder.ActionRef, hs []recorder.Job) error {
 		for _, c := range old {
 			if c[1] == h.Agent && c[2] == h.TicketID {
 				if err := e.exec(store.SetPayload, map[string]any{"id": c[0], "payload": string(h.Payload)}); err != nil {
-					return err
+					return 0, err
 				}
 				e.pending[c[0].(string)] = c[3].(float64)
 				matched = true
 			}
 		}
 		if !matched {
-			if err := e.runNew(parent, h); err != nil {
-				return err
+			if last, err = e.runNew(h, last); err != nil {
+				return 0, err
 			}
 		}
 	}
@@ -206,40 +216,42 @@ func (e *engine) handoffs(parent recorder.ActionRef, hs []recorder.Job) error {
 	}
 	gone, err := e.rows(store.Supersede, map[string]any{"parent": parent.ID, "new_handoffs": pairs, "rid": e.rid})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	for _, r := range gone {
 		delete(e.pending, r[0].(string))
 		e.emit(r, "superseded")
 	}
-	return nil
+	return last, nil
 }
 
 // runNew creates and runs an action that only exists because a re-run
-// handed off differently. Its seq sits between its parent and the next one.
-func (e *engine) runNew(parent recorder.ActionRef, j recorder.Job) error {
-	next, err := e.rows(store.NextSeq, map[string]any{"seq": parent.Seq})
+// handed off differently. It gets a seq between after (its parent or the
+// last new sibling) and the next existing action, and returns the highest
+// seq used by it and anything it handed off to.
+func (e *engine) runNew(j recorder.Job, after float64) (float64, error) {
+	next, err := e.rows(store.NextSeq, map[string]any{"seq": after})
 	if err != nil {
-		return err
+		return 0, err
 	}
-	seq := parent.Seq + 1
+	seq := after + 1
 	if n, ok := next[0][0].(float64); ok {
-		seq = (parent.Seq + n) / 2
+		seq = (after + n) / 2
 	}
 	a, err := recorder.Start(e.g, j, seq)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	held, err := e.replay(a)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if err := e.exec(store.Created, map[string]any{"rid": e.rid, "id": a.ID, "output": held.Output, "output_hash": held.OutputHash, "input_hash": held.InputHash}); err != nil {
-		return err
+		return 0, err
 	}
 	e.event(a, "new")
 	if err := e.writeEffects(a.ID, held); err != nil {
-		return err
+		return 0, err
 	}
 	return e.handoffs(a, held.Handoffs)
 }
@@ -259,8 +271,9 @@ func (e *engine) report(d model.Drafter) (*Report, error) {
 	}
 	for _, r := range comp {
 		c := CompItem{EffectID: r[0].(string), Kind: r[1].(string), TicketID: r[2].(string), ActionStatus: r[3].(string), Amount: r[4].(float64)}
+		// The repair is already in the graph; a failed draft must not hide the list.
 		if c.Draft, err = e.draft(d, c); err != nil {
-			return nil, err
+			c.DraftErr = err.Error()
 		}
 		rep.Compensation = append(rep.Compensation, c)
 	}
