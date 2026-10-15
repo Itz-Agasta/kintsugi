@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 
 	"github.com/Itz-Agasta/kintsugi/internal/model"
 	"github.com/Itz-Agasta/kintsugi/internal/recorder"
@@ -43,15 +42,15 @@ func research(w model.Writer) recorder.AgentFunc {
 		if err != nil {
 			return err
 		}
-		keys := []string{}
+		// Values are in the output so a changed policy changes the hash.
+		written := map[string]string{}
 		for _, f := range facts {
 			if err := r.Set(f.Key, f.Value); err != nil {
 				return err
 			}
-			keys = append(keys, f.Key)
+			written[f.Key] = f.Value
 		}
-		slices.Sort(keys)
-		return r.Finish(map[string]any{"facts": keys})
+		return r.Finish(map[string]any{"facts": written})
 	}
 }
 

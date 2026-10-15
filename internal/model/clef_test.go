@@ -81,3 +81,19 @@ func TestClefRefundLevelIsNeverNone(t *testing.T) {
 		t.Errorf("got %v %v, want refund full (best of partial and full)", got, err)
 	}
 }
+
+func TestClefRejectsMalformedAnswers(t *testing.T) {
+	for name, body := range map[string]string{
+		"empty":            `{}`,
+		"unknown choice":   `{"answers":{"choice":{"choice":"refund_all"}}}`,
+		"refund no levels": `{"answers":{"choice":{"choice":"refund"},"level":{"probabilities":{}}}}`,
+		"refund one level": `{"answers":{"choice":{"choice":"refund"},"level":{"probabilities":{"1":0.9}}}}`,
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
+		c := &ClefDecider{URL: srv.URL, Model: "clef-flash"}
+		if got, err := c.Decide(context.Background(), Ticket{}, nil); err == nil {
+			t.Errorf("%s: got %v, want an error", name, got)
+		}
+		srv.Close()
+	}
+}

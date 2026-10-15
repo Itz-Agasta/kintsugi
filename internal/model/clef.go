@@ -80,14 +80,22 @@ func (c *ClefDecider) Decide(ctx context.Context, t Ticket, facts []KV) (Decisio
 		return Decision{}, err
 	}
 	d := Decision{Choice: ans.Answers.Choice.Choice, Level: "none"}
-	if d.Choice == "refund" {
+	switch d.Choice {
+	case "reply", "escalate":
+	case "refund":
 		// A refund is partial or full, so "none" (level 0) is not a candidate.
 		best := -1.0
 		for i := 1; i < len(levels); i++ {
-			if p := ans.Answers.Level.Probabilities[strconv.Itoa(i)]; p > best {
+			p, ok := ans.Answers.Level.Probabilities[strconv.Itoa(i)]
+			if !ok {
+				return Decision{}, fmt.Errorf("clef: refund answer has no probability for level %q", levels[i])
+			}
+			if p > best {
 				best, d.Level = p, levels[i]
 			}
 		}
+	default:
+		return Decision{}, fmt.Errorf("clef: unknown choice %q", d.Choice)
 	}
 	return d, nil
 }
