@@ -228,3 +228,14 @@ RETURN coalesce(rr.old_output, a.output), t.output, t.payload`
 const SaveDraft = `
 MATCH (e:Effect {id: $eid})
 CREATE (e)-[:COMPENSATED_BY]->(:Draft {kind: $kind, text: $text})`
+
+// Graph view for the UI. Repair bookkeeping and drafts are left out.
+
+const GraphNodes = `
+MATCH (n) WHERE n:Agent OR n:Source OR n:Action OR n:Fact OR n:Effect
+RETURN labels(n)[0], properties(n)`
+
+const GraphEdges = `
+MATCH (a)-[r]->(b)
+WHERE NOT a:Repair AND NOT b:Draft
+RETURN a.id, type(r), b.id`
