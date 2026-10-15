@@ -78,9 +78,9 @@ func TestRepairQueriesRun(t *testing.T) {
 	}
 
 	query(t, g, "Supersede", store.Supersede, map[string]any{
-		"parent":       actionID(t, g, "triage", "t05"),
-		"new_handoffs": []any{[]string{"notifier", "t05"}},
-		"rid":          "r1",
+		"parent": actionID(t, g, "triage", "t05"),
+		"keep":   []any{},
+		"rid":    "r1",
 	})
 	if n := len(query(t, g, "superseded", "MATCH (a:Action {ticket_id: 't05', status: 'superseded'}) RETURN a", nil)); n != 2 {
 		t.Errorf("Supersede: %d superseded actions on t05, want 2 (refund, notifier)", n)

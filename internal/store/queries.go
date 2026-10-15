@@ -107,11 +107,11 @@ MATCH (a:Action {id: $id})
 RETURN size([(u:Action)-[:FEEDS|HANDED_OFF]->(a)
   WHERE u.status IN ['poisoned', 'rerun_changed', 'superseded', 'new'] | u]) > 0 AS must_rerun`
 
-// Supersede retires old children that a re-run no longer hands off to, and
-// everything they handed off to in turn.
+// Supersede retires the old children a re-run did not hand off to again
+// ($keep holds the ids it did), and everything they handed off to in turn.
 const Supersede = `
 MATCH (p:Action {id: $parent})-[:HANDED_OFF]->(c:Action)
-WHERE NOT [c.tool, c.ticket_id] IN $new_handoffs
+WHERE NOT c.id IN $keep
 MATCH (c)-[:HANDED_OFF*0..]->(d:Action)
 SET d.status = 'superseded'
 WITH d

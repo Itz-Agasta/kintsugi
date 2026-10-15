@@ -242,3 +242,57 @@ func TestSecondRepairRefused(t *testing.T) {
 		t.Error("want an error repairing a graph that was already repaired")
 	}
 }
+
+// A re-run that hands off once where it used to hand off twice to the same
+// agent and ticket keeps one old child, with the new payload, and supersedes
+// the other.
+func TestDuplicateHandoffsMatchOneToOne(t *testing.T) {
+	g := storetest.Graph(t)
+	set := func(src, v string) recorder.AgentFunc {
+		return func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error {
+			if err := r.Ingest(src, "web", src); err != nil {
+				return err
+			}
+			return r.Set("k", v)
+		}
+	}
+	ags := map[string]recorder.AgentFunc{
+		"good": set("good-src", "clean"),
+		"bad":  set("bad-src", "bad"),
+		"p": func(ctx context.Context, r *recorder.Rec, _ json.RawMessage) error {
+			v, _, err := r.Get("k")
+			if err != nil {
+				return err
+			}
+			if err := r.Finish(map[string]any{"k": v}); err != nil {
+				return err
+			}
+			if v == "bad" {
+				if err := r.Handoff("x", map[string]int{"n": 1}); err != nil {
+					return err
+				}
+				return r.Handoff("x", map[string]int{"n": 2})
+			}
+			return r.Handoff("x", map[string]int{"n": 9})
+		},
+		"x": func(ctx context.Context, r *recorder.Rec, payload json.RawMessage) error {
+			return r.Finish(map[string]any{"payload": string(payload)})
+		},
+	}
+	q := recorder.NewQueue(g, ags)
+	for _, a := range []string{"good", "bad", "p"} {
+		q.Enqueue(recorder.Job{Agent: a, TicketID: "t1", Payload: json.RawMessage(`{}`)})
+	}
+	if err := q.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repair.Run(context.Background(), g, "bad-src", ags, model.FakeDrafter{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, g, "MATCH (x:Action {tool:'x', status:'superseded'}) RETURN count(x)"); n != 1 {
+		t.Errorf("superseded x: %d, want 1", n)
+	}
+	if n := count(t, g, `MATCH (x:Action {tool:'x'}) WHERE x.status <> 'superseded' AND x.payload = '{"n":9}' RETURN count(x)`); n != 1 {
+		t.Errorf("x children with the new payload: %d, want 1", n)
+	}
+}

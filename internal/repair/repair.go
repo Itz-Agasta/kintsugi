@@ -192,35 +192,45 @@ func (e *engine) handoffs(parent recorder.ActionRef, hs []recorder.Job) (float64
 	if err != nil {
 		return 0, err
 	}
-	var pairs []any
+	// Each handoff takes at most one old child with the same agent and
+	// ticket, so duplicates match one to one.
+	keep := []any{}
+	taken := map[string]bool{}
+	var unmatched []recorder.Job
 	for _, h := range hs {
-		pairs = append(pairs, []string{h.Agent, h.TicketID})
 		matched := false
 		for _, c := range old {
-			if c[1] == h.Agent && c[2] == h.TicketID {
-				if err := e.exec(store.SetPayload, map[string]any{"id": c[0], "payload": string(h.Payload)}); err != nil {
-					return 0, err
-				}
-				e.pending[c[0].(string)] = c[3].(float64)
-				matched = true
+			id := c[0].(string)
+			if taken[id] || c[1] != h.Agent || c[2] != h.TicketID {
+				continue
 			}
-		}
-		if !matched {
-			if last, err = e.runNew(h, last); err != nil {
+			if err := e.exec(store.SetPayload, map[string]any{"id": id, "payload": string(h.Payload)}); err != nil {
 				return 0, err
 			}
+			e.pending[id] = c[3].(float64)
+			taken[id] = true
+			keep = append(keep, id)
+			matched = true
+			break
+		}
+		if !matched {
+			unmatched = append(unmatched, h)
 		}
 	}
-	if pairs == nil {
-		pairs = []any{}
-	}
-	gone, err := e.rows(store.Supersede, map[string]any{"parent": parent.ID, "new_handoffs": pairs, "rid": e.rid})
+	// Supersede before creating new actions: they are children of the same
+	// parent and are not in keep.
+	gone, err := e.rows(store.Supersede, map[string]any{"parent": parent.ID, "keep": keep, "rid": e.rid})
 	if err != nil {
 		return 0, err
 	}
 	for _, r := range gone {
 		delete(e.pending, r[0].(string))
 		e.emit(r, "superseded")
+	}
+	for _, h := range unmatched {
+		if last, err = e.runNew(h, last); err != nil {
+			return 0, err
+		}
 	}
 	return last, nil
 }
