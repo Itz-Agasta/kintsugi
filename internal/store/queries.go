@@ -53,3 +53,9 @@ CREATE (a)-[:CAUSED]->(:Effect {id: $id, kind: $kind, ticket_id: a.ticket_id, am
 const Finish = `
 MATCH (a:Action {id: $aid})
 SET a.output = $output, a.output_hash = $output_hash, a.input_hash = $input_hash`
+
+// Model response cache, in its own graph shared by all tenants.
+
+const CacheGet = `MATCH (r:Response {key: $key}) RETURN r.body`
+
+const CachePut = `MERGE (r:Response {key: $key}) SET r.body = $body`
