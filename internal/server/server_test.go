@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -202,5 +203,172 @@ func TestCORS(t *testing.T) {
 		if got := resp.Header.Get("Access-Control-Allow-Origin"); got != want {
 			t.Errorf("origin %s: allow-origin %q, want %q", origin, got, want)
 		}
+	}
+}
+
+// started returns a server whose clean graph is built and janitor is running.
+func started(t *testing.T, tweak func(*server.Config)) (*server.Server, *httptest.Server) {
+	t.Helper()
+	s, ts, _ := newServer(t, tweak)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return s, ts
+}
+
+func TestRepairStreamAndPath(t *testing.T) {
+	_, ts := started(t, nil)
+	sid := randID()
+	stream(t, ts.URL+"/api/run/stream?session="+sid)
+
+	var notifier string
+	var g struct {
+		Nodes []struct {
+			ID    string         `json:"id"`
+			Props map[string]any `json:"props"`
+		} `json:"nodes"`
+	}
+	getJSON(t, ts.URL+"/api/graph?session="+sid, &g)
+	for _, n := range g.Nodes {
+		if n.Props["tool"] == "notifier" && n.Props["ticket_id"] == "t05" {
+			notifier = n.ID
+		}
+	}
+	var path struct {
+		Nodes []string                          `json:"nodes"`
+		Edges []struct{ From, To, Type string } `json:"edges"`
+	}
+	src := "&source=partner-blog/policy-update"
+	if code := getJSON(t, ts.URL+"/api/path?session="+sid+src+"&action="+notifier, &path); code != 200 || len(path.Nodes) != 5 || len(path.Edges) != 4 {
+		t.Errorf("path: HTTP %d, %d nodes, %d edges, want 5 and 4", code, len(path.Nodes), len(path.Edges))
+	}
+	if len(path.Edges) > 0 && (path.Edges[0].Type != "INGESTED" || path.Edges[0].To != "partner-blog/policy-update") {
+		t.Errorf("first edge = %+v, want INGESTED into the source", path.Edges[0])
+	}
+
+	evs := stream(t, ts.URL+"/api/repair/stream?session="+sid+src)
+	if n := names(evs); n["action"] != 29 || n["report"] != 1 || n["diff"] != 1 {
+		t.Errorf("repair events = %v", n)
+	}
+	for _, e := range evs {
+		switch e.name {
+		case "report":
+			var rep struct{ Compensation []any }
+			json.Unmarshal(e.data, &rep)
+			if len(rep.Compensation) != 10 {
+				t.Errorf("report: %d compensation items, want 10", len(rep.Compensation))
+			}
+		case "diff":
+			var d struct {
+				Match bool     `json:"match"`
+				Lines []string `json:"lines"`
+			}
+			json.Unmarshal(e.data, &d)
+			if !d.Match || len(d.Lines) != 0 {
+				t.Errorf("diff = %+v, want a match", d)
+			}
+		}
+	}
+}
+
+func TestRepairBeforeRunIsAnErrorEvent(t *testing.T) {
+	_, ts := started(t, nil)
+	evs := stream(t, ts.URL+"/api/repair/stream?session="+randID()+"&source=partner-blog/policy-update")
+	if len(evs) != 1 || evs[0].name != "error" {
+		t.Errorf("events = %v, want one error", names(evs))
+	}
+}
+
+func TestResetDropsGraph(t *testing.T) {
+	_, ts, cfg := newServer(t, nil)
+	sid := randID()
+	stream(t, ts.URL+"/api/run/stream?session="+sid)
+	resp, err := http.Post(ts.URL+"/api/reset?session="+sid, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("reset: HTTP %d", resp.StatusCode)
+	}
+	if hasGraph(t, cfg.Prefix+sid) {
+		t.Error("graph still exists after reset")
+	}
+}
+
+func hasGraph(t *testing.T, name string) bool {
+	t.Helper()
+	graphs, err := storetest.DB(t).ListGraphs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return slices.Contains(graphs, name)
+}
+
+func TestCapEvictsLeastRecentlyUsed(t *testing.T) {
+	_, ts, cfg := newServer(t, func(c *server.Config) { c.MaxSessions = 1 })
+	first, second := randID(), randID()
+	stream(t, ts.URL+"/api/run/stream?session="+first)
+	stream(t, ts.URL+"/api/run/stream?session="+second)
+	if hasGraph(t, cfg.Prefix+first) {
+		t.Error("first session's graph survived past the cap")
+	}
+	if !hasGraph(t, cfg.Prefix+second) {
+		t.Error("second session has no graph")
+	}
+}
+
+func TestCapFullOfBusySessionsGets503(t *testing.T) {
+	_, ts, _ := newServer(t, func(c *server.Config) { c.MaxSessions = 1; c.RunPace = 20 * time.Millisecond })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", ts.URL+"/api/run/stream?session="+randID(), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	bufio.NewReader(resp.Body).ReadString('\n')
+	if code := getJSON(t, ts.URL+"/api/graph?session="+randID(), nil); code != 503 {
+		t.Errorf("new session with the only slot busy: HTTP %d, want 503", code)
+	}
+}
+
+func TestSweepDropsIdleSessions(t *testing.T) {
+	s, ts, cfg := newServer(t, func(c *server.Config) { c.Idle = 50 * time.Millisecond })
+	sid := randID()
+	stream(t, ts.URL+"/api/run/stream?session="+sid)
+	time.Sleep(100 * time.Millisecond)
+	s.Sweep()
+	if hasGraph(t, cfg.Prefix+sid) {
+		t.Error("idle session's graph was not dropped")
+	}
+}
+
+func TestStartCleansUpAndBuildsClean(t *testing.T) {
+	db := storetest.DB(t)
+	_, _, cfg := newServer(t, nil)
+	stale := db.SelectGraph(cfg.Prefix + "stale0000")
+	if _, err := stale.Query("CREATE (:Action {id: 'x'})", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	s := server.New(db, model.FakeWriter{}, model.FakeDecider{}, model.FakeDrafter{}, cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if hasGraph(t, cfg.Prefix+"stale0000") {
+		t.Error("stale visitor graph survived startup")
+	}
+	res, err := db.SelectGraph(cfg.CleanGraph).Query("MATCH (a:Action) RETURN count(a)", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Next()
+	if n, _ := res.Record().GetByIndex(0); n.(int64) != 61 {
+		t.Errorf("clean graph has %v actions, want 61", n)
 	}
 }

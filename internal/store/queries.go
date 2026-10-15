@@ -151,10 +151,12 @@ MATCH (e:Effect {live: true})
 RETURN e.ticket_id, e.kind, e.amount ORDER BY e.ticket_id, e.kind`
 
 // ExplainPath is the shortest directed causal path from a bad source to an
-// action. Only FEEDS and HANDED_OFF, never through Agent nodes.
+// action. Only FEEDS and HANDED_OFF, never through Agent nodes. Returns the
+// node ids and one [from, type, to] per edge.
 const ExplainPath = `
 MATCH p = (s:Source {id: $src})<-[:INGESTED]-(:Action)-[:FEEDS|HANDED_OFF*0..]->(a:Action {id: $aid})
-RETURN p ORDER BY length(p) LIMIT 1`
+WITH p ORDER BY length(p) LIMIT 1
+RETURN [n IN nodes(p) | n.id], [r IN relationships(p) | [startNode(r).id, type(r), endNode(r).id]]`
 
 // Repair engine bookkeeping.
 

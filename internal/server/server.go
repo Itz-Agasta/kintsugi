@@ -3,17 +3,23 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/FalkorDB/falkordb-go/v2"
+	"github.com/Itz-Agasta/kintsugi/internal/agents"
 	"github.com/Itz-Agasta/kintsugi/internal/model"
 	"github.com/Itz-Agasta/kintsugi/internal/recorder"
+	"github.com/Itz-Agasta/kintsugi/internal/repair"
 	"github.com/Itz-Agasta/kintsugi/internal/scenario"
 	"github.com/Itz-Agasta/kintsugi/internal/store"
 )
@@ -58,6 +64,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/run/stream", s.withSession(true, s.runStream))
 	mux.HandleFunc("GET /api/graph", s.withSession(false, s.graph))
 	mux.HandleFunc("GET /api/blast", s.withSession(false, s.blast))
+	mux.HandleFunc("GET /api/path", s.withSession(false, s.path))
+	mux.HandleFunc("GET /api/repair/stream", s.withSession(true, s.repairStream))
+	mux.HandleFunc("POST /api/reset", s.withSession(true, s.reset))
 	return s.cors(mux)
 }
 
@@ -88,7 +97,11 @@ func (s *Server) withSession(exclusive bool, h func(http.ResponseWriter, *http.R
 			http.Error(w, "session must be 8 to 32 lowercase letters or digits", http.StatusBadRequest)
 			return
 		}
-		sess := s.session(id)
+		sess, err := s.session(id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
 		if exclusive {
 			if !sess.mu.TryLock() {
 				http.Error(w, "this session is busy", http.StatusConflict)
@@ -100,16 +113,113 @@ func (s *Server) withSession(exclusive bool, h func(http.ResponseWriter, *http.R
 	}
 }
 
-func (s *Server) session(id string) *session {
+var errFull = errors.New("all demo slots are busy, try again in a minute")
+
+// session returns the visitor's session, creating it if needed. At the cap,
+// the least recently used session that is not busy makes room.
+func (s *Server) session(id string) (*session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sess, ok := s.sessions[id]
 	if !ok {
+		if len(s.sessions) >= s.cfg.MaxSessions && !s.evictLRU() {
+			return nil, errFull
+		}
 		sess = &session{}
 		s.sessions[id] = sess
 	}
 	sess.last = time.Now()
-	return sess
+	return sess, nil
+}
+
+// evictLRU drops the least recently used idle session. s.mu must be held.
+func (s *Server) evictLRU() bool {
+	var oldest string
+	for id, sess := range s.sessions {
+		if oldest == "" || sess.last.Before(s.sessions[oldest].last) {
+			if sess.mu.TryLock() {
+				if oldest != "" {
+					s.sessions[oldest].mu.Unlock()
+				}
+				oldest = id
+			}
+		}
+	}
+	if oldest == "" {
+		return false
+	}
+	s.drop(oldest)
+	return true
+}
+
+// drop deletes a session and its graph. s.mu and the session lock must be
+// held. The lock is left held: the session is gone, and a request still
+// holding a pointer to it gets 409 instead of running on a deleted graph.
+func (s *Server) drop(id string) {
+	if err := deleteGraph(s.db.SelectGraph(s.cfg.Prefix + id)); err != nil {
+		log.Printf("drop %s: %v", id, err)
+	}
+	delete(s.sessions, id)
+}
+
+// Sweep drops every session idle for longer than cfg.Idle.
+func (s *Server) Sweep() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, sess := range s.sessions {
+		if time.Since(sess.last) > s.cfg.Idle && sess.mu.TryLock() {
+			s.drop(id)
+		}
+	}
+}
+
+// Start deletes visitor graphs left by an earlier process, builds the clean
+// graph if it is empty, and runs the janitor until ctx ends.
+func (s *Server) Start(ctx context.Context) error {
+	graphs, err := s.db.ListGraphs()
+	if err != nil {
+		return err
+	}
+	for _, name := range graphs {
+		if strings.HasPrefix(name, s.cfg.Prefix) {
+			if err := deleteGraph(s.db.SelectGraph(name)); err != nil {
+				return err
+			}
+		}
+	}
+	res, err := rows(s.db.SelectGraph(s.cfg.CleanGraph), "MATCH (a:Action) RETURN count(a)", nil)
+	if err != nil {
+		return err
+	}
+	if res[0][0].(int64) == 0 {
+		g, err := store.Reset(s.db, s.cfg.CleanGraph)
+		if err != nil {
+			return err
+		}
+		if err := scenario.Run(ctx, g, false, s.w, s.d, nil); err != nil {
+			return fmt.Errorf("building %s: %w", s.cfg.CleanGraph, err)
+		}
+	}
+	go func() {
+		t := time.NewTicker(5 * time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				s.Sweep()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return nil
+}
+
+func deleteGraph(g *falkordb.Graph) error {
+	if err := g.Delete(); err != nil && !strings.Contains(err.Error(), "empty key") {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) cypher(w http.ResponseWriter, r *http.Request) {
@@ -195,6 +305,62 @@ func (s *Server) blast(w http.ResponseWriter, r *http.Request, g *falkordb.Graph
 		ids = append(ids, row[0].(*falkordb.Node).Properties["id"].(string))
 	}
 	writeJSON(w, ids)
+}
+
+func (s *Server) path(w http.ResponseWriter, r *http.Request, g *falkordb.Graph) {
+	q := r.URL.Query()
+	res, err := rows(g, store.ExplainPath, map[string]any{"src": q.Get("source"), "aid": q.Get("action")})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(res) == 0 {
+		http.Error(w, "no causal path from that source to that action", http.StatusNotFound)
+		return
+	}
+	out := struct {
+		Nodes []string    `json:"nodes"`
+		Edges []graphEdge `json:"edges"`
+	}{Nodes: []string{}, Edges: []graphEdge{}}
+	for _, n := range res[0][0].([]any) {
+		out.Nodes = append(out.Nodes, n.(string))
+	}
+	for _, e := range res[0][1].([]any) {
+		e := e.([]any)
+		out.Edges = append(out.Edges, graphEdge{From: e[0].(string), Type: e[1].(string), To: e[2].(string)})
+	}
+	writeJSON(w, out)
+}
+
+// repairStream repairs the visitor graph, sending each decided action, then
+// the report, then the diff against the clean run.
+func (s *Server) repairStream(w http.ResponseWriter, r *http.Request, g *falkordb.Graph) {
+	send := sse(w)
+	onEvent := func(e repair.Event) {
+		send("action", e)
+		pause(r, s.cfg.RepairPace)
+	}
+	rep, err := repair.Run(r.Context(), g, r.URL.Query().Get("source"), agents.All(s.w, s.d), s.dr, onEvent)
+	if err != nil {
+		send("error", map[string]string{"message": err.Error()})
+		return
+	}
+	send("report", rep)
+	lines, err := repair.Diff(s.db.SelectGraph(s.cfg.CleanGraph), g)
+	if err != nil {
+		send("error", map[string]string{"message": err.Error()})
+		return
+	}
+	send("diff", map[string]any{"match": len(lines) == 0, "lines": append([]string{}, lines...)})
+}
+
+// reset drops the visitor graph and forgets the session.
+func (s *Server) reset(w http.ResponseWriter, r *http.Request, g *falkordb.Graph) {
+	id := strings.TrimPrefix(g.Id, s.cfg.Prefix)
+	s.mu.Lock()
+	s.drop(id)
+	s.mu.Unlock()
+	writeJSON(w, map[string]bool{"reset": true})
 }
 
 // sse switches w to an event stream and returns a function that sends one
