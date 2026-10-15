@@ -6,6 +6,12 @@ up:
 down:
     docker compose down
 
+# Format, vet and build. Run before every push.
+check:
+    test -z "$(gofmt -l .)" || (gofmt -l . && echo 'run gofmt -w .' && exit 1)
+    go vet ./...
+    go build ./...
+
 test:
     go test ./...
 
