@@ -24,7 +24,8 @@ var (
 )
 
 // Run records the scenario into g. The clean run skips the poisoned page.
-func Run(ctx context.Context, g *falkordb.Graph, poisoned bool, w model.Writer, d model.Decider) error {
+// after, if not nil, is called once per finished action.
+func Run(ctx context.Context, g *falkordb.Graph, poisoned bool, w model.Writer, d model.Decider, after func(recorder.ActionRef)) error {
 	var pages []json.RawMessage
 	if err := json.Unmarshal(pagesJSON, &pages); err != nil {
 		return err
@@ -34,6 +35,7 @@ func Run(ctx context.Context, g *falkordb.Graph, poisoned bool, w model.Writer, 
 		return err
 	}
 	q := recorder.NewQueue(g, agents.All(w, d))
+	q.After = after
 	for _, raw := range pages {
 		var p model.Page
 		if err := json.Unmarshal(raw, &p); err != nil {

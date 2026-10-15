@@ -151,10 +151,12 @@ MATCH (e:Effect {live: true})
 RETURN e.ticket_id, e.kind, e.amount ORDER BY e.ticket_id, e.kind`
 
 // ExplainPath is the shortest directed causal path from a bad source to an
-// action. Only FEEDS and HANDED_OFF, never through Agent nodes.
+// action. Only FEEDS and HANDED_OFF, never through Agent nodes. Returns the
+// node ids and one [from, type, to] per edge.
 const ExplainPath = `
 MATCH p = (s:Source {id: $src})<-[:INGESTED]-(:Action)-[:FEEDS|HANDED_OFF*0..]->(a:Action {id: $aid})
-RETURN p ORDER BY length(p) LIMIT 1`
+WITH p ORDER BY length(p) LIMIT 1
+RETURN [n IN nodes(p) | n.id], [r IN relationships(p) | [startNode(r).id, type(r), endNode(r).id]]`
 
 // Repair engine bookkeeping.
 
@@ -228,3 +230,21 @@ RETURN coalesce(rr.old_output, a.output), t.output, t.payload`
 const SaveDraft = `
 MATCH (e:Effect {id: $eid})
 CREATE (e)-[:COMPENSATED_BY]->(:Draft {kind: $kind, text: $text})`
+
+// Graph view for the UI. Repair bookkeeping and drafts are left out.
+
+const GraphNodes = `
+MATCH (n) WHERE n:Agent OR n:Source OR n:Action OR n:Fact OR n:Effect
+RETURN labels(n)[0], properties(n)`
+
+const GraphEdges = `
+MATCH (a)-[r]->(b)
+WHERE NOT a:Repair AND NOT b:Draft
+RETURN a.id, type(r), b.id`
+
+// The clean baseline gets a marker only after its run finished, so a run
+// cut off halfway is rebuilt instead of trusted.
+
+const MarkBaseline = `CREATE (:Baseline {complete: true})`
+
+const BaselineDone = `MATCH (b:Baseline {complete: true}) RETURN count(b)`

@@ -73,8 +73,8 @@ func TestRepairQueriesRun(t *testing.T) {
 	if len(path) != 1 {
 		t.Fatalf("ExplainPath: %d rows", len(path))
 	}
-	if p, _ := path[0].GetByIndex(0); p.(falkordb.Path).EdgeCount() != 4 {
-		t.Errorf("ExplainPath: %d edges, want 4", p.(falkordb.Path).EdgeCount())
+	if e, _ := path[0].GetByIndex(1); len(e.([]any)) != 4 {
+		t.Errorf("ExplainPath: %d edges, want 4", len(e.([]any)))
 	}
 
 	query(t, g, "Supersede", store.Supersede, map[string]any{

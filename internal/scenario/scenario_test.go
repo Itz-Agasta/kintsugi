@@ -7,6 +7,7 @@ import (
 
 	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/Itz-Agasta/kintsugi/internal/model"
+	"github.com/Itz-Agasta/kintsugi/internal/recorder"
 	"github.com/Itz-Agasta/kintsugi/internal/scenario"
 	"github.com/Itz-Agasta/kintsugi/internal/store"
 	"github.com/Itz-Agasta/kintsugi/internal/store/storetest"
@@ -15,7 +16,7 @@ import (
 func build(t *testing.T, poisoned bool) *falkordb.Graph {
 	t.Helper()
 	g := storetest.Graph(t)
-	if err := scenario.Run(context.Background(), g, poisoned, model.FakeWriter{}, model.FakeDecider{}); err != nil {
+	if err := scenario.Run(context.Background(), g, poisoned, model.FakeWriter{}, model.FakeDecider{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	return g
@@ -78,10 +79,27 @@ func TestRunTwiceSameCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := scenario.Run(context.Background(), g, true, model.FakeWriter{}, model.FakeDecider{}); err != nil {
+	if err := scenario.Run(context.Background(), g, true, model.FakeWriter{}, model.FakeDecider{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if second := count(t, g, "MATCH (a:Action) RETURN count(a)"); second != first {
 		t.Errorf("first run %d actions, second %d", first, second)
+	}
+}
+
+func TestRunReportsEachAction(t *testing.T) {
+	g := storetest.Graph(t)
+	seen := map[string]bool{}
+	after := func(a recorder.ActionRef) {
+		if seen[a.ID] {
+			t.Errorf("action %s reported twice", a.ID)
+		}
+		seen[a.ID] = true
+	}
+	if err := scenario.Run(context.Background(), g, true, model.FakeWriter{}, model.FakeDecider{}, after); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 66 {
+		t.Errorf("reported %d actions, want 66", len(seen))
 	}
 }

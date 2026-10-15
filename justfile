@@ -29,3 +29,6 @@ demo:
     go run ./cmd/kintsugi scenario demo
     go run ./cmd/kintsugi repair demo partner-blog/policy-update
     go run ./cmd/kintsugi diff clean demo
+
+serve:
+    go run ./cmd/kintsugi serve

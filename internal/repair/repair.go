@@ -20,21 +20,28 @@ import (
 
 // Event is one action decided during a repair.
 type Event struct {
-	ActionID, Tool, TicketID, Status string
-	Seq                              float64
+	ActionID string  `json:"action_id"`
+	Tool     string  `json:"tool"`
+	TicketID string  `json:"ticket_id"`
+	Status   string  `json:"status"`
+	Seq      float64 `json:"seq"`
 }
 
 // CompItem is an effect that really left the system and is now wrong.
 type CompItem struct {
-	EffectID, Kind, TicketID, ActionStatus string
-	Amount                                 float64
-	Draft, DraftErr                        string
+	EffectID     string  `json:"effect_id"`
+	Kind         string  `json:"kind"`
+	TicketID     string  `json:"ticket_id"`
+	ActionStatus string  `json:"action_status"`
+	Amount       float64 `json:"amount"`
+	Draft        string  `json:"draft"`
+	DraftErr     string  `json:"draft_error,omitempty"`
 }
 
 type Report struct {
-	RepairID     string
-	Counts       map[string]int
-	Compensation []CompItem
+	RepairID     string         `json:"repair_id"`
+	Counts       map[string]int `json:"counts"`
+	Compensation []CompItem     `json:"compensation"`
 }
 
 type engine struct {
