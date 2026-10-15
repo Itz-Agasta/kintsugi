@@ -24,6 +24,13 @@ type Job struct {
 	Payload  json.RawMessage
 }
 
+// ActionRef is what it takes to run an action again.
+type ActionRef struct {
+	ID, Tool, TicketID string
+	Seq                float64
+	Payload            json.RawMessage
+}
+
 // Queue runs jobs for one graph, one at a time, in FIFO order. That order
 // is the seq order, so it is also a valid re-execution order.
 type Queue struct {
@@ -57,15 +64,11 @@ func (q *Queue) runOne(ctx context.Context, j Job) error {
 		return fmt.Errorf("unknown agent %q", j.Agent)
 	}
 	q.seq++
-	r := &Rec{ID: newID(), Seq: q.seq, q: q, job: j}
-	if err := r.query(store.StartAction, map[string]any{"agent": j.Agent, "id": r.ID, "ticket": j.TicketID, "seq": r.Seq}); err != nil {
+	a, err := Start(q.g, j, q.seq)
+	if err != nil {
 		return err
 	}
-	if j.ParentID != "" {
-		if err := r.query(store.LinkHandoff, map[string]any{"parent": j.ParentID, "id": r.ID}); err != nil {
-			return err
-		}
-	}
+	r := &Rec{ID: a.ID, Seq: a.Seq, g: q.g, job: j, enqueue: q.Enqueue}
 	if err := fn(ctx, r, j.Payload); err != nil {
 		return err
 	}
@@ -73,6 +76,27 @@ func (q *Queue) runOne(ctx context.Context, j Job) error {
 		return r.Finish(map[string]any{})
 	}
 	return nil
+}
+
+// Start records a new Action at seq, with its payload so it can be re-run.
+func Start(g *falkordb.Graph, j Job, seq float64) (ActionRef, error) {
+	a := ActionRef{ID: newID(), Tool: j.Agent, TicketID: j.TicketID, Seq: seq, Payload: j.Payload}
+	if _, err := g.Query(store.StartAction, map[string]any{"agent": j.Agent, "id": a.ID, "ticket": j.TicketID, "seq": seq, "payload": string(j.Payload)}, nil); err != nil {
+		return a, err
+	}
+	if j.ParentID != "" {
+		if _, err := g.Query(store.LinkHandoff, map[string]any{"parent": j.ParentID, "id": a.ID}, nil); err != nil {
+			return a, err
+		}
+	}
+	return a, nil
+}
+
+// WriteEffect records an effect on an action. Effects made during repair
+// are written with sent=false: repair never sends anything.
+func WriteEffect(g *falkordb.Graph, actionID, kind string, amount float64, sent bool) error {
+	_, err := g.Query(store.Effect, map[string]any{"aid": actionID, "id": newID(), "kind": kind, "amount": amount, "sent": sent}, nil)
+	return err
 }
 
 func newID() string {

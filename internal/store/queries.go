@@ -16,7 +16,7 @@ var IndexQueries = []string{
 
 const StartAction = `
 MERGE (ag:Agent {id: $agent})
-CREATE (ag)-[:RAN]->(:Action {id: $id, tool: $agent, ticket_id: $ticket, seq: toFloat($seq), status: 'ok'})`
+CREATE (ag)-[:RAN]->(:Action {id: $id, tool: $agent, ticket_id: $ticket, seq: toFloat($seq), status: 'ok', payload: $payload})`
 
 const LinkHandoff = `
 MATCH (p:Action {id: $parent}), (a:Action {id: $id})
@@ -48,7 +48,13 @@ FOREACH (_ IN CASE WHEN prev IS NULL THEN [] ELSE [1] END | CREATE (prev)-[:NEXT
 
 const Effect = `
 MATCH (a:Action {id: $aid})
-CREATE (a)-[:CAUSED]->(:Effect {id: $id, kind: $kind, ticket_id: a.ticket_id, amount: toFloat($amount), external: true, sent: true, live: true})`
+CREATE (a)-[:CAUSED]->(:Effect {id: $id, kind: $kind, ticket_id: a.ticket_id, amount: toFloat($amount), external: true, sent: $sent, live: true})`
+
+// DeactivateOwn turns off the versions of a key that an action wrote before,
+// so a replayed write replaces them.
+const DeactivateOwn = `
+MATCH (:Action {id: $aid})-[:WROTE]->(f:Fact {key: $key})
+SET f.active = false`
 
 const Finish = `
 MATCH (a:Action {id: $aid})
