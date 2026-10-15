@@ -117,13 +117,17 @@ SET d.status = 'superseded'
 WITH d
 OPTIONAL MATCH (d)-[:WROTE]->(f:Fact) SET f.active = false
 WITH d
-OPTIONAL MATCH (d)-[:CAUSED]->(e:Effect) SET e.live = false, e.invalidated_by = $rid`
+OPTIONAL MATCH (d)-[:CAUSED]->(e:Effect) SET e.live = false, e.invalidated_by = $rid
+WITH DISTINCT d
+MATCH (r:Repair {id: $rid})
+MERGE (r)-[:SUPERSEDED]->(d)
+RETURN d.id, d.tool, d.ticket_id, d.seq`
 
 // Compensation lists effects that really left the system and are no longer
 // what the ticket should have.
 const Compensation = `
 MATCH (a:Action)-[:CAUSED]->(e:Effect {sent: true, live: false, invalidated_by: $rid})
-RETURN a.ticket_id, a.status, e ORDER BY a.seq`
+RETURN e.id, e.kind, a.ticket_id, a.status, e.amount ORDER BY a.seq`
 
 // The three diff queries run on the clean and demo graphs and are compared
 // in Go. Ids, versions and seq are never compared.
@@ -148,3 +152,53 @@ RETURN e.ticket_id, e.kind, e.amount ORDER BY e.ticket_id, e.kind`
 const ExplainPath = `
 MATCH p = (s:Source {id: $src})<-[:INGESTED]-(:Action)-[:FEEDS|HANDED_OFF*0..]->(a:Action {id: $aid})
 RETURN p ORDER BY length(p) LIMIT 1`
+
+// Repair engine bookkeeping.
+
+const CreateRepair = `CREATE (:Repair {id: $rid, source_id: $src, ts: timestamp()})`
+
+// MarkSourceBad returns how many sources matched, so an unknown id is an error.
+const MarkSourceBad = `MATCH (s:Source {id: $src}) SET s.trust = 'bad' RETURN count(s)`
+
+const PoisonedActions = `
+MATCH (:Source {id: $src})<-[:INGESTED]-(a:Action)
+RETURN a.id, a.tool, a.ticket_id, a.seq`
+
+const LoadAction = `
+MATCH (a:Action {id: $id})
+RETURN a.tool, a.ticket_id, a.seq, a.payload, a.status, a.output, a.output_hash`
+
+const SetStatus = `MATCH (a:Action {id: $id}) SET a.status = $status`
+
+// Reran records a re-run. The old output and hash stay on the RERAN edge;
+// the node takes the new ones only when the output changed.
+const Reran = `
+MATCH (r:Repair {id: $rid}), (a:Action {id: $id})
+CREATE (r)-[:RERAN {old_output: a.output, old_hash: a.output_hash, new_hash: $output_hash}]->(a)
+SET a.status = $status
+WITH a WHERE $status = 'rerun_changed'
+SET a.output = $output, a.output_hash = $output_hash, a.input_hash = $input_hash`
+
+// Created records an action that exists only because a re-run handed off
+// differently.
+const Created = `
+MATCH (r:Repair {id: $rid}), (a:Action {id: $id})
+CREATE (r)-[:CREATED]->(a)
+SET a.status = 'new', a.output = $output, a.output_hash = $output_hash, a.input_hash = $input_hash`
+
+const InvalidateEffects = `
+MATCH (:Action {id: $id})-[:CAUSED]->(e:Effect {live: true})
+SET e.live = false, e.invalidated_by = $rid`
+
+const OldChildren = `
+MATCH (:Action {id: $id})-[:HANDED_OFF]->(c:Action)
+RETURN c.id, c.tool, c.ticket_id, c.seq`
+
+const SetPayload = `MATCH (a:Action {id: $id}) SET a.payload = $payload`
+
+// NextSeq is the smallest seq above x, so a new action can slot in before it.
+const NextSeq = `MATCH (a:Action) WHERE a.seq > $seq RETURN min(a.seq)`
+
+const StatusCounts = `
+MATCH (a:Action) WHERE a.status <> 'ok'
+RETURN a.status, count(a)`
