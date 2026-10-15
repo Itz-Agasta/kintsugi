@@ -38,3 +38,23 @@ func TestCacheHitsAcrossCalls(t *testing.T) {
 		t.Errorf("inner calls = %d, want 2", inner.calls)
 	}
 }
+
+type countingDrafter struct{ calls int }
+
+func (c *countingDrafter) Draft(ctx context.Context, kind string, t model.Ticket, wrong, right string) (string, error) {
+	c.calls++
+	return "text", nil
+}
+
+func TestCacheDrafter(t *testing.T) {
+	inner := &countingDrafter{}
+	d := model.NewCache(storetest.Graph(t)).Drafter(inner, "m", "v1")
+	for range 2 {
+		if got, err := d.Draft(context.Background(), "correction_email", model.Ticket{ID: "t1"}, "a", "b"); err != nil || got != "text" {
+			t.Fatalf("got %q %v", got, err)
+		}
+	}
+	if inner.calls != 1 {
+		t.Errorf("inner calls = %d, want 1", inner.calls)
+	}
+}

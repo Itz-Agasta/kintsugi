@@ -23,6 +23,10 @@ func (c *Cache) Writer(inner Writer, model, promptVersion string) Writer {
 	return cachedWriter{c, inner, model, promptVersion}
 }
 
+func (c *Cache) Drafter(inner Drafter, model, promptVersion string) Drafter {
+	return cachedDrafter{c, inner, model, promptVersion}
+}
+
 func (c *Cache) Decider(inner Decider, model, promptVersion string) Decider {
 	return cachedDecider{c, inner, model, promptVersion}
 }
@@ -92,6 +96,25 @@ func (d cachedDecider) Decide(ctx context.Context, t Ticket, facts []KV) (Decisi
 	out, err := d.inner.Decide(ctx, t, facts)
 	if err != nil {
 		return Decision{}, err
+	}
+	return out, d.c.put(k, out)
+}
+
+type cachedDrafter struct {
+	c             *Cache
+	inner         Drafter
+	model, prompt string
+}
+
+func (d cachedDrafter) Draft(ctx context.Context, kind string, t Ticket, wrong, right string) (string, error) {
+	k := key(d.model, d.prompt, []any{kind, t, wrong, right}, nil)
+	var out string
+	if ok, err := d.c.get(k, &out); ok || err != nil {
+		return out, err
+	}
+	out, err := d.inner.Draft(ctx, kind, t, wrong, right)
+	if err != nil {
+		return "", err
 	}
 	return out, d.c.put(k, out)
 }

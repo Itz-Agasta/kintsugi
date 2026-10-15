@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/Itz-Agasta/kintsugi/internal/store"
 )
 
@@ -15,14 +16,16 @@ type Rec struct {
 	ID  string
 	Seq float64
 
-	q        *Queue
+	g        *falkordb.Graph
 	job      Job
+	enqueue  func(Job)
+	held     *Held // set when replaying
 	reads    map[string]string
 	finished bool
 }
 
 func (r *Rec) query(q string, params map[string]any) error {
-	_, err := r.q.g.Query(q, params, nil)
+	_, err := r.g.Query(q, params, nil)
 	return err
 }
 
@@ -33,7 +36,7 @@ func (r *Rec) Ingest(id, kind, url string) error {
 
 // Get returns the latest active value of key written before this action.
 func (r *Rec) Get(key string) (string, bool, error) {
-	res, err := r.q.g.Query(store.Get, map[string]any{"key": key, "seq": r.Seq, "aid": r.ID}, nil)
+	res, err := r.g.Query(store.Get, map[string]any{"key": key, "seq": r.Seq, "aid": r.ID}, nil)
 	if err != nil {
 		return "", false, err
 	}
@@ -49,15 +52,26 @@ func (r *Rec) Get(key string) (string, bool, error) {
 	return s, true, nil
 }
 
-// Set writes a new version of key.
+// Set writes a new version of key. A replayed write replaces the versions
+// this action wrote the first time.
 func (r *Rec) Set(key, value string) error {
+	if r.held != nil {
+		if err := r.query(store.DeactivateOwn, map[string]any{"aid": r.ID, "key": key}); err != nil {
+			return err
+		}
+		r.held.Wrote = append(r.held.Wrote, key)
+	}
 	return r.query(store.Set, map[string]any{"aid": r.ID, "id": newID(), "key": key, "value": value})
 }
 
 // Effect records something that left the system. Sending is simulated:
 // the Effect node is the outbox and the ledger.
 func (r *Rec) Effect(kind string, amount float64) error {
-	return r.query(store.Effect, map[string]any{"aid": r.ID, "id": newID(), "kind": kind, "amount": amount})
+	if r.held != nil {
+		r.held.Effects = append(r.held.Effects, HeldEffect{kind, amount})
+		return nil
+	}
+	return WriteEffect(r.g, r.ID, kind, amount, true)
 }
 
 // Handoff queues a job for another agent with this action as its parent.
@@ -66,7 +80,12 @@ func (r *Rec) Handoff(agent string, payload any) error {
 	if err != nil {
 		return err
 	}
-	r.q.Enqueue(Job{Agent: agent, TicketID: r.job.TicketID, ParentID: r.ID, Payload: b})
+	j := Job{Agent: agent, TicketID: r.job.TicketID, ParentID: r.ID, Payload: b}
+	if r.held != nil {
+		r.held.Handoffs = append(r.held.Handoffs, j)
+		return nil
+	}
+	r.enqueue(j)
 	return nil
 }
 
@@ -78,12 +97,12 @@ func (r *Rec) Finish(decision map[string]any) error {
 		return err
 	}
 	r.finished = true
-	return r.query(store.Finish, map[string]any{
-		"aid":         r.ID,
-		"output":      string(out),
-		"output_hash": hash(string(out)),
-		"input_hash":  hash(r.inputs()),
-	})
+	oh, ih := hash(string(out)), hash(r.inputs())
+	if r.held != nil {
+		r.held.Output, r.held.OutputHash, r.held.InputHash = string(out), oh, ih
+		return nil
+	}
+	return r.query(store.Finish, map[string]any{"aid": r.ID, "output": string(out), "output_hash": oh, "input_hash": ih})
 }
 
 // inputs is the payload plus every key/value read, sorted by key.

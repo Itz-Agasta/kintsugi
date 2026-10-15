@@ -16,7 +16,7 @@ var IndexQueries = []string{
 
 const StartAction = `
 MERGE (ag:Agent {id: $agent})
-CREATE (ag)-[:RAN]->(:Action {id: $id, tool: $agent, ticket_id: $ticket, seq: toFloat($seq), status: 'ok'})`
+CREATE (ag)-[:RAN]->(:Action {id: $id, tool: $agent, ticket_id: $ticket, seq: toFloat($seq), status: 'ok', payload: $payload})`
 
 const LinkHandoff = `
 MATCH (p:Action {id: $parent}), (a:Action {id: $id})
@@ -48,7 +48,13 @@ FOREACH (_ IN CASE WHEN prev IS NULL THEN [] ELSE [1] END | CREATE (prev)-[:NEXT
 
 const Effect = `
 MATCH (a:Action {id: $aid})
-CREATE (a)-[:CAUSED]->(:Effect {id: $id, kind: $kind, ticket_id: a.ticket_id, amount: toFloat($amount), external: true, sent: true, live: true})`
+CREATE (a)-[:CAUSED]->(:Effect {id: $id, kind: $kind, ticket_id: a.ticket_id, amount: toFloat($amount), external: true, sent: $sent, live: true})`
+
+// DeactivateOwn turns off the versions of a key that an action wrote before,
+// so a replayed write replaces them.
+const DeactivateOwn = `
+MATCH (:Action {id: $aid})-[:WROTE]->(f:Fact {key: $key})
+SET f.active = false`
 
 const Finish = `
 MATCH (a:Action {id: $aid})
@@ -66,7 +72,7 @@ OPTIONAL MATCH (a:Action) WITH count(a) AS actions
 OPTIONAL MATCH (f:Fact) WITH actions, count(f) AS facts
 OPTIONAL MATCH (e:Effect) RETURN actions, facts, count(e) AS effects`
 
-// Repair queries (Day 2). See notes on each in the README graph model.
+// Repair queries.
 
 // BlastRadius is every action downstream of a bad source, across agents.
 const BlastRadius = `
@@ -74,11 +80,14 @@ MATCH (s:Source {id: $src})<-[:INGESTED]-(a0:Action)
 MATCH (a0)-[:FEEDS|HANDED_OFF*0..]->(a:Action)
 RETURN DISTINCT a ORDER BY a.seq`
 
-// Mask marks the actions that ingested the bad source and turns off the
-// facts they wrote.
+// Mask marks every action that ingested the bad source, whether or not it
+// wrote anything, and turns off the facts it wrote.
 const Mask = `
-MATCH (s:Source {id: $src})<-[:INGESTED]-(a:Action)-[:WROTE]->(f:Fact)
-SET a.status = 'poisoned', f.active = false`
+MATCH (s:Source {id: $src})<-[:INGESTED]-(a:Action)
+SET a.status = 'poisoned'
+WITH a
+OPTIONAL MATCH (a)-[:WROTE]->(f:Fact)
+FOREACH (x IN CASE WHEN f IS NULL THEN [] ELSE [f] END | SET x.active = false)`
 
 // ReadLatestActive is the latest active version of a key before a reader.
 const ReadLatestActive = `
@@ -101,23 +110,27 @@ MATCH (a:Action {id: $id})
 RETURN size([(u:Action)-[:FEEDS|HANDED_OFF]->(a)
   WHERE u.status IN ['poisoned', 'rerun_changed', 'superseded', 'new'] | u]) > 0 AS must_rerun`
 
-// Supersede retires old children that a re-run no longer hands off to, and
-// everything they handed off to in turn.
+// Supersede retires the old children a re-run did not hand off to again
+// ($keep holds the ids it did), and everything they handed off to in turn.
 const Supersede = `
 MATCH (p:Action {id: $parent})-[:HANDED_OFF]->(c:Action)
-WHERE NOT [c.tool, c.ticket_id] IN $new_handoffs
+WHERE NOT c.id IN $keep
 MATCH (c)-[:HANDED_OFF*0..]->(d:Action)
 SET d.status = 'superseded'
 WITH d
 OPTIONAL MATCH (d)-[:WROTE]->(f:Fact) SET f.active = false
 WITH d
-OPTIONAL MATCH (d)-[:CAUSED]->(e:Effect) SET e.live = false, e.invalidated_by = $rid`
+OPTIONAL MATCH (d)-[:CAUSED]->(e:Effect) SET e.live = false, e.invalidated_by = $rid
+WITH DISTINCT d
+MATCH (r:Repair {id: $rid})
+MERGE (r)-[:SUPERSEDED]->(d)
+RETURN d.id, d.tool, d.ticket_id, d.seq`
 
 // Compensation lists effects that really left the system and are no longer
 // what the ticket should have.
 const Compensation = `
 MATCH (a:Action)-[:CAUSED]->(e:Effect {sent: true, live: false, invalidated_by: $rid})
-RETURN a.ticket_id, a.status, e ORDER BY a.seq`
+RETURN e.id, e.kind, a.ticket_id, a.status, e.amount ORDER BY a.seq`
 
 // The three diff queries run on the clean and demo graphs and are compared
 // in Go. Ids, versions and seq are never compared.
@@ -142,3 +155,76 @@ RETURN e.ticket_id, e.kind, e.amount ORDER BY e.ticket_id, e.kind`
 const ExplainPath = `
 MATCH p = (s:Source {id: $src})<-[:INGESTED]-(:Action)-[:FEEDS|HANDED_OFF*0..]->(a:Action {id: $aid})
 RETURN p ORDER BY length(p) LIMIT 1`
+
+// Repair engine bookkeeping.
+
+// RepairCount guards against a second repair on the same graph, which the
+// engine does not support: reset and run again instead.
+const RepairCount = `MATCH (r:Repair) RETURN count(r)`
+
+const CreateRepair = `CREATE (:Repair {id: $rid, source_id: $src, ts: timestamp()})`
+
+// MarkSourceBad returns how many sources matched, so an unknown id is an error.
+const MarkSourceBad = `MATCH (s:Source {id: $src}) SET s.trust = 'bad' RETURN count(s)`
+
+const PoisonedActions = `
+MATCH (:Source {id: $src})<-[:INGESTED]-(a:Action)
+RETURN a.id, a.tool, a.ticket_id, a.seq`
+
+const LoadAction = `
+MATCH (a:Action {id: $id})
+RETURN a.tool, a.ticket_id, a.seq, a.payload, a.status, a.output, a.output_hash`
+
+const SetStatus = `MATCH (a:Action {id: $id}) SET a.status = $status`
+
+// Reran records a re-run. The old output and hash stay on the RERAN edge;
+// the node takes the new inputs always and the new output only when it changed.
+const Reran = `
+MATCH (r:Repair {id: $rid}), (a:Action {id: $id})
+CREATE (r)-[:RERAN {old_output: a.output, old_hash: a.output_hash, new_hash: $output_hash}]->(a)
+SET a.status = $status, a.input_hash = $input_hash
+WITH a WHERE $status = 'rerun_changed'
+SET a.output = $output, a.output_hash = $output_hash`
+
+// Created records an action that exists only because a re-run handed off
+// differently.
+const Created = `
+MATCH (r:Repair {id: $rid}), (a:Action {id: $id})
+CREATE (r)-[:CREATED]->(a)
+SET a.status = 'new', a.output = $output, a.output_hash = $output_hash, a.input_hash = $input_hash`
+
+const InvalidateEffects = `
+MATCH (:Action {id: $id})-[:CAUSED]->(e:Effect {live: true})
+SET e.live = false, e.invalidated_by = $rid`
+
+const OldChildren = `
+MATCH (:Action {id: $id})-[:HANDED_OFF]->(c:Action)
+RETURN c.id, c.tool, c.ticket_id, c.seq`
+
+// OwnKeys lists the keys an action currently has active versions of.
+const OwnKeys = `
+MATCH (:Action {id: $id})-[:WROTE]->(f:Fact {active: true})
+RETURN DISTINCT f.key`
+
+const SetPayload = `MATCH (a:Action {id: $id}) SET a.payload = $payload`
+
+// NextSeq is the smallest seq above x, so a new action can slot in before it.
+const NextSeq = `MATCH (a:Action) WHERE a.seq > $seq RETURN min(a.seq)`
+
+const StatusCounts = `
+MATCH (a:Action) WHERE a.status <> 'ok'
+RETURN a.status, count(a)`
+
+// CompContext is what a follow-up draft needs: what the action did before
+// repair, the ticket's current decision, and the ticket itself.
+const CompContext = `
+MATCH (a:Action)-[:CAUSED]->(:Effect {id: $eid})
+OPTIONAL MATCH (:Repair {id: $rid})-[rr:RERAN]->(a)
+WITH a, rr
+MATCH (t:Action {tool: 'triage', ticket_id: a.ticket_id})
+WHERE NOT t.status IN ['poisoned', 'superseded']
+RETURN coalesce(rr.old_output, a.output), t.output, t.payload`
+
+const SaveDraft = `
+MATCH (e:Effect {id: $eid})
+CREATE (e)-[:COMPENSATED_BY]->(:Draft {kind: $kind, text: $text})`
