@@ -26,8 +26,8 @@ import {
 import { busy, clock, initial, reduce } from "./state";
 
 // Three.js is large; it loads the first time the 3D view is opened.
-const Stack3D = lazy(() =>
-  import("@/components/dashboard/Stack3D").then((m) => ({ default: m.Stack3D })),
+const Atlas3D = lazy(() =>
+  import("@/components/dashboard/Atlas3D").then((m) => ({ default: m.Atlas3D })),
 );
 
 const NO_TIMES: Times = { flagged: null, started: null, ended: null };
@@ -255,7 +255,7 @@ export default function App() {
               <div className="relative min-h-0 flex-1">
                 {view === "3d" ? (
                   <Suspense fallback={<div className="absolute inset-0 bg-canvas" />}>
-                    <Stack3D s={s} onSelect={select} inset={drawer ? 396 : 0} />
+                    <Atlas3D s={s} onSelect={select} inset={drawer ? 396 : 0} />
                   </Suspense>
                 ) : (
                   <GraphView s={s} onSelect={select} inset={drawer ? 396 : 0} />
