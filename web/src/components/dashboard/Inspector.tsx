@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { ArrowRightIcon, CaretRightIcon, CodeIcon, DatabaseIcon } from "@phosphor-icons/react";
+import {
+  ArrowRightIcon,
+  CaretRightIcon,
+  CodeIcon,
+  DatabaseIcon,
+  XIcon,
+} from "@phosphor-icons/react";
 import { cn } from "cn";
 import { CypherBlock } from "@/components/CypherBlock";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -220,7 +226,17 @@ function Empty({ s, cypher }: { s: State; cypher: Record<string, string> }) {
   );
 }
 
-export function Inspector({ s, cypher }: { s: State; cypher: Record<string, string> }) {
+export function Inspector({
+  s,
+  cypher,
+  open,
+  onClose,
+}: {
+  s: State;
+  cypher: Record<string, string>;
+  open: boolean;
+  onClose: () => void;
+}) {
   const [d, setD] = useState<{ id: string; detail: ActionDetail } | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Refetch when the selection changes, and when its status changes during a repair.
@@ -243,7 +259,21 @@ export function Inspector({ s, cypher }: { s: State; cypher: Record<string, stri
   }, [s.selected, status, s.phase]);
 
   return (
-    <aside className="min-h-0 overflow-auto rounded-lg border border-rule bg-panel">
+    <aside
+      aria-hidden={!open}
+      className={cn(
+        "absolute top-2 right-2 bottom-2 z-10 w-[380px] max-w-[calc(100%-16px)] overflow-auto rounded-lg border border-line bg-panel transition-[transform,opacity] duration-200 ease-out",
+        open ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-6 opacity-0",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close"
+        className="absolute top-2.5 right-2.5 z-10 grid size-7 place-items-center rounded-md text-faint hover:bg-raised hover:text-text"
+      >
+        <XIcon size={15} />
+      </button>
       {s.selected && error ? (
         <Section last>
           <Prose>error: {error}</Prose>

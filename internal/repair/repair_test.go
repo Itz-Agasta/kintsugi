@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/Itz-Agasta/kintsugi/internal/agents"
@@ -406,5 +407,61 @@ func TestRerunSameUpdatesInputHash(t *testing.T) {
 	}
 	if hash() == before {
 		t.Error("t01 triage is rerun_same but kept the poisoned input_hash")
+	}
+}
+
+// Decided actions carry the MustRerun answer and FalkorDB's own timing for
+// it; every event carries when its decision started and how long it took.
+func TestEventsCarryDecisionAndTiming(t *testing.T) {
+	demo := build(t, true)
+	var events []repair.Event
+	if _, err := repair.Run(context.Background(), demo, scenario.PoisonSource, fakeAgents(), model.FakeDrafter{}, func(e repair.Event) { events = append(events, e) }); err != nil {
+		t.Fatal(err)
+	}
+	last := -1.0
+	for _, e := range events {
+		switch e.Status {
+		case "rerun_changed", "rerun_same", "skipped":
+			if e.MustRerun == nil {
+				t.Fatalf("%s %s: no must_rerun", e.Status, e.ActionID)
+			}
+			if *e.MustRerun != (e.Status != "skipped") {
+				t.Errorf("%s %s: must_rerun = %v", e.Status, e.ActionID, *e.MustRerun)
+			}
+			if e.QueryMs <= 0 {
+				t.Errorf("%s %s: query_ms = %v, want > 0", e.Status, e.ActionID, e.QueryMs)
+			}
+		default:
+			if e.MustRerun != nil {
+				t.Errorf("%s %s: must_rerun set", e.Status, e.ActionID)
+			}
+		}
+		// A new action's span covers its own replay, so it is never empty.
+		if e.Status == "new" && e.DurMs <= 0 {
+			t.Errorf("new %s: dur_ms = %v, want > 0", e.ActionID, e.DurMs)
+		}
+		if e.StartMs < 0 || e.DurMs < 0 || e.StartMs < last {
+			t.Errorf("%s %s: start %v dur %v after start %v", e.Status, e.ActionID, e.StartMs, e.DurMs, last)
+		}
+		last = e.StartMs
+	}
+}
+
+// A slow event callback (the server paces its stream there) is not repair
+// time: starts stay well under the time spent sleeping in it.
+func TestEventTimingSkipsCallback(t *testing.T) {
+	demo := build(t, true)
+	var events []repair.Event
+	pause := 20 * time.Millisecond
+	slow := func(e repair.Event) {
+		events = append(events, e)
+		time.Sleep(pause)
+	}
+	if _, err := repair.Run(context.Background(), demo, scenario.PoisonSource, fakeAgents(), model.FakeDrafter{}, slow); err != nil {
+		t.Fatal(err)
+	}
+	last := events[len(events)-1]
+	if slept := float64(len(events)-1) * float64(pause.Milliseconds()); last.StartMs >= slept {
+		t.Errorf("last start %.1fms, want under the %.0fms spent in the callback", last.StartMs, slept)
 	}
 }

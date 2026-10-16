@@ -21,6 +21,13 @@ export const RESEARCH_W = 200;
 // Effects of one ticket stack in its column, this far apart (not stretched).
 export const EFFECT_GAP = 24;
 
+// laneIndex is the lane a y position falls in. Stacked effects can sit more
+// than half a lane below the effects lane, so the last lane takes everything
+// past it.
+export function laneIndex(y: number): number {
+  return Math.min(LANES.length - 1, Math.max(0, Math.round(y / LANE_H)));
+}
+
 function laneOf(n: GraphNode): number | null {
   switch (n.label) {
     case "Source":
@@ -108,7 +115,8 @@ export function layout(
   for (const [x, list] of effects) {
     list.sort((a, b) => a.seq - b.seq);
     list.forEach(({ id }, i) =>
-      pos.set(id, { x, y: 6 * LANE_H + (i - (list.length - 1) / 2) * EFFECT_GAP }),
+      // The first two sit either side of the lane centre; more grow downward.
+      pos.set(id, { x, y: 6 * LANE_H + (i - 0.5) * EFFECT_GAP }),
     );
   }
 

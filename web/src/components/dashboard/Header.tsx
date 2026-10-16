@@ -1,25 +1,13 @@
 import {
   ArrowCounterClockwiseIcon,
-  ArrowsClockwiseIcon,
   CaretRightIcon,
   CheckIcon,
-  CircleDashedIcon,
   CircleIcon,
   CircleNotchIcon,
-  CirclesThreePlusIcon,
   CodeIcon,
-  DatabaseIcon,
-  EnvelopeSimpleIcon,
   FlagIcon,
-  GitForkIcon,
   GraphIcon,
-  MagnifyingGlassIcon,
-  PaperPlaneTiltIcon,
   PlayIcon,
-  ReceiptIcon,
-  ShieldCheckIcon,
-  SkipForwardIcon,
-  StackIcon,
   TimerIcon,
   WrenchIcon,
   type Icon,
@@ -121,20 +109,6 @@ const TITLES = {
   repaired: `Repaired ${SOURCE}`,
 };
 
-const STAT_ICONS: Record<string, Icon> = {
-  Actions: StackIcon,
-  Facts: DatabaseIcon,
-  Effects: PaperPlaneTiltIcon,
-  "Blast radius": CirclesThreePlusIcon,
-  Outside: ShieldCheckIcon,
-  "Re-run": ArrowsClockwiseIcon,
-  Skipped: SkipForwardIcon,
-  Pending: CircleDashedIcon,
-  "Can't undo": PaperPlaneTiltIcon,
-};
-
-const AGENTS: Icon[] = [MagnifyingGlassIcon, GitForkIcon, ReceiptIcon, EnvelopeSimpleIcon];
-
 function seconds(ms: number) {
   return `${Math.max(0, Math.round(ms / 1000))}s`;
 }
@@ -143,21 +117,7 @@ function Meta({ s, times, now }: { s: State; times: Times; now: number }) {
   if (s.phase === "idle") {
     return <span>Records a support desk where agents share memory in FalkorDB.</span>;
   }
-  const agents = (
-    <span className="flex items-center gap-1.5">
-      <span className="flex gap-0.5">
-        {AGENTS.map((I, i) => (
-          <i
-            key={i}
-            className="grid size-[22px] place-items-center rounded-[5px] bg-raised text-muted"
-          >
-            <I size={13} />
-          </i>
-        ))}
-      </span>
-      across {s.graph.nodes.filter((n) => n.label === "Agent").length} agents
-    </span>
-  );
+  const agents = <span>{s.graph.nodes.filter((n) => n.label === "Agent").length} agents</span>;
   return (
     <>
       {times.flagged && (
@@ -203,27 +163,94 @@ export function RunHeader({
   const primary = PRIMARY[s.phase];
   const spinning = busy(s);
   const repairing = s.phase === "repairing";
+  // Once a run starts the header folds to one row, so the stage gets the height.
+  const compact = s.phase !== "idle";
+  const tile = (
+    <span
+      className={cn(
+        "grid shrink-0 place-items-center rounded-[7px] border",
+        compact ? "size-8" : "size-7",
+        repairing || s.phase === "repaired"
+          ? "border-gold-line bg-gold-tint text-gold"
+          : s.phase === "flagged"
+            ? "border-text bg-text text-bg"
+            : "border-line bg-raised text-muted",
+      )}
+    >
+      {spinning ? (
+        <CircleNotchIcon size={16} className="animate-spin motion-reduce:animate-none" />
+      ) : (
+        // The tile names the phase; the logo already sits in the top bar.
+        <PhaseIcon phase={s.phase} />
+      )}
+    </span>
+  );
+  const button = primary ? (
+    <Button
+      size={compact ? "default" : "lg"}
+      variant={s.phase === "flagged" || repairing ? "repair" : "primary"}
+      disabled={spinning}
+      onClick={onPrimary}
+      className={compact ? "h-9 px-3.5" : undefined}
+    >
+      <primary.icon
+        size={16}
+        className={spinning ? "animate-spin motion-reduce:animate-none" : undefined}
+      />
+      {primary.label}
+    </Button>
+  ) : null;
+
+  if (compact) {
+    return (
+      <div className="flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2 border-b border-rule px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-3">
+          {tile}
+          <div className="min-w-0">
+            <h1 className="truncate font-sans text-[17px] leading-[22px] font-medium tracking-[-0.01em]">
+              {TITLES[s.phase]}
+            </h1>
+            <div className="flex gap-4 font-sans text-xs leading-[18px] text-muted">
+              <Meta s={s} times={times} now={now} />
+            </div>
+          </div>
+        </div>
+        <StepDots s={s} />
+        <div className="flex-1" />
+        <div className="flex">
+          {stats(s).map((st) => {
+            return (
+              <div key={st.label} className="border-l border-rule px-4">
+                <div className="flex items-center gap-1.5 font-sans text-[11.5px] leading-4 text-muted">
+                  {st.label}
+                </div>
+                <div className={cn("font-mono text-[22px] leading-7", st.gold && "text-gold")}>
+                  {st.value}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {s.phase === "repaired" ? (
+          <Tabs value={s.tab} onValueChange={(v) => onTab(v as Tab)}>
+            <TabsList className="h-9">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="diff">Diff</TabsTrigger>
+              <TabsTrigger value="drafts">Drafts</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        ) : null}
+        {button}
+      </div>
+    );
+  }
+
   return (
-    <div className="rounded-[10px] border border-rule bg-panel">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-7 px-[22px] py-[18px] max-[1000px]:grid-cols-1">
+    <div className="border-b border-rule">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-7 px-[22px] py-[18px]">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
-            <span
-              className={cn(
-                "grid size-7 shrink-0 place-items-center rounded-[7px] border",
-                repairing
-                  ? "border-gold-line bg-gold-tint text-gold"
-                  : "border-line bg-raised text-muted",
-              )}
-            >
-              {spinning ? (
-                <CircleNotchIcon size={16} className="animate-spin motion-reduce:animate-none" />
-              ) : s.phase === "repaired" ? (
-                <CheckIcon size={16} />
-              ) : (
-                <Logo />
-              )}
-            </span>
+            {tile}
             <h1 className="truncate font-sans text-[22px] leading-7 font-medium tracking-[-0.015em]">
               {TITLES[s.phase]}
             </h1>
@@ -232,95 +259,63 @@ export function RunHeader({
             <Meta s={s} times={times} now={now} />
           </div>
         </div>
-        <div className="flex">
-          {stats(s).map((st) => {
-            const I = STAT_ICONS[st.label];
-            return (
-              <div key={st.label} className="border-l border-rule px-[22px] py-0.5">
-                <div className="flex items-center gap-1.5 font-sans text-[12.5px] text-muted">
-                  {I && <I size={14} />}
-                  {st.label}
-                </div>
-                <div
-                  className={cn(
-                    "mt-0.5 font-mono text-[30px] leading-[34px]",
-                    st.gold && "text-gold",
-                  )}
-                >
-                  {st.value}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {primary ? (
-          <Button
-            size="lg"
-            variant={s.phase === "flagged" || repairing ? "repair" : "primary"}
-            disabled={spinning}
-            onClick={onPrimary}
-          >
-            <primary.icon
-              size={16}
-              className={spinning ? "animate-spin motion-reduce:animate-none" : undefined}
-            />
-            {primary.label}
-          </Button>
-        ) : (
-          <span />
-        )}
+        {button}
       </div>
-      <StepTrack s={s} onTab={onTab} />
+      <div className="flex items-center border-t border-rule px-[22px] py-[11px]">
+        <StepDots s={s} labels />
+      </div>
     </div>
   );
 }
 
+function PhaseIcon({ phase }: { phase: State["phase"] }) {
+  if (phase === "idle") return <PlayIcon size={15} />;
+  if (phase === "flagged") return <FlagIcon size={15} weight="fill" />;
+  return <CheckIcon size={16} />;
+}
+
 const STEPS = ["Run scenario", "Flag source", "Repair", "Verify against clean run"];
 
-function StepTrack({ s, onTab }: { s: State; onTab: (t: Tab) => void }) {
+// StepDots is the four-step track. Compact, only the current step is named.
+function StepDots({ s, labels }: { s: State; labels?: boolean }) {
   const cur = step(s);
   const allDone = s.phase === "repaired";
   return (
-    <div className="flex items-stretch border-t border-rule px-[22px] max-[1000px]:flex-wrap">
+    <div className="flex items-center">
       {STEPS.map((label, i) => {
         const n = i + 1;
         const done = n < cur || allDone;
         const now = n === cur && !allDone;
         return (
-          <span
-            key={label}
-            className={cn(
-              "relative mr-[22px] flex items-center gap-2 py-[11px] pr-[26px] font-sans text-[13px]",
-              done ? "text-muted" : now ? "text-text" : "text-faint",
-              now &&
-                "after:absolute after:right-[26px] after:-bottom-px after:left-0 after:h-0.5 after:bg-gold",
+          <span key={label} className="flex items-center" title={label}>
+            {i > 0 && (
+              <span className={cn("mx-2 h-px w-5", done || now ? "bg-muted" : "bg-line")} />
             )}
-          >
             <span
               className={cn(
                 "grid size-5 place-items-center rounded-full border font-mono text-[11px]",
-                done ? "border-muted bg-raised" : now ? "border-gold text-gold" : "border-line",
+                done
+                  ? "border-muted bg-raised text-muted"
+                  : now
+                    ? "border-gold text-gold"
+                    : "border-line text-faint",
               )}
             >
               {done ? <CheckIcon size={11} /> : n}
             </span>
-            {label}
+            {(labels || now) && (
+              <span
+                className={cn(
+                  "ml-2 font-sans text-[13px]",
+                  now ? "text-text" : done ? "text-muted" : "text-faint",
+                )}
+              >
+                {label}
+              </span>
+            )}
           </span>
         );
       })}
-      <div className="ml-auto flex items-center">
-        {s.phase === "repaired" ? (
-          <Tabs value={s.tab} onValueChange={(v) => onTab(v as Tab)} className="h-full">
-            <TabsList>
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="diff">Diff</TabsTrigger>
-              <TabsTrigger value="drafts">Drafts</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        ) : (
-          <ProgressStrip s={s} />
-        )}
-      </div>
     </div>
   );
 }
@@ -338,7 +333,7 @@ const CELL: Record<UiStatus, string> = {
   pending: "border-dashed border-faint opacity-80",
 };
 
-function ProgressStrip({ s }: { s: State }) {
+export function ProgressStrip({ s }: { s: State }) {
   const cells = strip(s);
   if (cells.length === 0) return null;
   const resolved = cells.filter((c) => !["pending", "running", "ok"].includes(c.status)).length;

@@ -1,10 +1,12 @@
 import { cn } from "cn";
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { SidebarSimpleIcon } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Footer } from "@/components/dashboard/Footer";
 import { Graph as GraphView } from "@/components/dashboard/Graph";
-import { ChromeStrip, RunHeader, type Times } from "@/components/dashboard/Header";
-import { LogStrip } from "@/components/dashboard/LogStrip";
+import { ChromeStrip, ProgressStrip, RunHeader, type Times } from "@/components/dashboard/Header";
+import { Dock } from "@/components/dashboard/Dock";
+import { ViewSwitch } from "@/components/dashboard/ViewSwitch";
 import { DiffView } from "@/components/dashboard/DiffView";
 import { DraftsView } from "@/components/dashboard/DraftsView";
 import { Inspector } from "@/components/dashboard/Inspector";
@@ -22,6 +24,11 @@ import {
   type RunEvent,
 } from "@/lib/types";
 import { busy, clock, initial, reduce } from "./state";
+
+// Three.js is large; it loads the first time the 3D view is opened.
+const Atlas3D = lazy(() =>
+  import("@/components/dashboard/Atlas3D").then((m) => ({ default: m.Atlas3D })),
+);
 
 const NO_TIMES: Times = { flagged: null, started: null, ended: null };
 
@@ -71,6 +78,7 @@ export default function App() {
   const run = () => {
     if (stream.current || busy(s)) return;
     setTimes(NO_TIMES);
+    setDismissed(null);
     dispatch({ type: "run/start" });
     let last = 0;
     stream.current = openStream(
@@ -143,6 +151,7 @@ export default function App() {
     post("/api/reset").then(
       () => {
         setTimes(NO_TIMES);
+        setDismissed(null);
         dispatch({ type: "reset" });
       },
       (e: unknown) => dispatch({ type: "fail", message: message(e) }),
@@ -169,18 +178,35 @@ export default function App() {
   };
   const [showCypher, setShowCypher] = useState(false);
   const tab = s.phase === "repaired" ? s.tab : "overview";
+  const [rail, setRail] = useState(false);
+  const [view, setView] = useState<"2d" | "3d">("3d");
+  // The drawer opens on a selection, and on its own when flagged or repaired
+  // until the viewer closes it for that phase.
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const drawer =
+    s.selected !== null ||
+    ((s.phase === "flagged" || s.phase === "repaired") && dismissed !== s.phase);
 
-  const resetRef = useRef(reset);
+  // Keys: R reset, [ ticket rail, 2 and 3 the graph view, Esc closes the drawer.
+  const keys = useRef<Record<string, () => void>>({});
   useEffect(() => {
-    resetRef.current = reset;
+    keys.current = {
+      r: reset,
+      "[": () => setRail((r) => !r),
+      "2": () => setView("2d"),
+      "3": () => setView("3d"),
+      Escape: () => {
+        select(null);
+        setDismissed(s.phase);
+      },
+    };
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "r" && e.key !== "R") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
-      resetRef.current();
+      keys.current[e.key.length === 1 ? e.key.toLowerCase() : e.key]?.();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -188,7 +214,7 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <div className="grid h-svh grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-2.5 p-2.5 max-[1000px]:h-auto">
+      <div className="grid h-svh grid-rows-[auto_minmax(0,1fr)] gap-2.5 p-2.5 max-[1000px]:h-auto">
         <ChromeStrip
           graphId={`demo-${sessionId()}`}
           repairId={s.report?.repair_id ?? null}
@@ -197,36 +223,59 @@ export default function App() {
           onReset={reset}
           resetDisabled={false}
         />
-        <RunHeader
-          s={s}
-          times={times}
-          now={now}
-          onPrimary={primary}
-          onTab={(tab) => dispatch({ type: "tab", tab })}
-        />
-        {tab === "diff" && <DiffView s={s} cypher={cypher} />}
-        {tab === "drafts" && <DraftsView s={s} />}
-        {/* Hidden rather than unmounted on the other tabs, so the graph keeps its canvas. */}
-        <div
-          className={cn(
-            "grid min-h-0 grid-cols-[340px_minmax(0,1fr)_360px] gap-2.5 max-[1000px]:grid-cols-1",
-            tab !== "overview" && "hidden",
-          )}
-        >
-          <SpanTree s={s} onSelect={select} />
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-rule bg-panel">
-            <div className="flex h-11 items-center justify-between border-b border-rule px-3.5 font-sans font-medium">
-              Provenance
-              <small className="text-[12.5px] font-normal text-faint">
-                what each action read, and who it handed off to
-              </small>
+        {/* The ticket list runs the full height on the left; the run header
+            and the stage share the column to its right. */}
+        <div className="flex min-h-0 gap-2.5 max-[1000px]:flex-col">
+          <SpanTree s={s} onSelect={select} rail={rail} onToggle={() => setRail((r) => !r)} />
+          {/* One instrument: the run header, the stage bar and the stage share a panel. */}
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-rule bg-panel max-[1000px]:min-h-[720px]">
+            <RunHeader
+              s={s}
+              times={times}
+              now={now}
+              onPrimary={primary}
+              onTab={(tab) => dispatch({ type: "tab", tab })}
+            />
+            {tab === "diff" && <DiffView s={s} cypher={cypher} />}
+            {tab === "drafts" && <DraftsView s={s} />}
+            {/* Hidden rather than unmounted on the other tabs, so the graph keeps its canvas. */}
+            <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "overview" && "hidden")}>
+              <div className="flex h-11 shrink-0 items-center justify-between border-b border-rule px-3.5 font-sans font-medium">
+                Provenance
+                <div className="flex items-center gap-5">
+                  <ProgressStrip s={s} />
+                  {!drawer && (s.phase === "flagged" || s.phase === "repaired") && (
+                    // Reopens the drawer's phase summary after it was closed.
+                    <Button size="sm" onClick={() => setDismissed(null)}>
+                      <SidebarSimpleIcon size={14} className="-scale-x-100" />
+                      {s.phase === "repaired" ? "Report" : "Blast radius"}
+                    </Button>
+                  )}
+                  <ViewSwitch view={view} onView={setView} />
+                </div>
+              </div>
+              <div className="relative min-h-0 flex-1">
+                {view === "3d" ? (
+                  <Suspense fallback={<div className="absolute inset-0 bg-canvas" />}>
+                    <Atlas3D s={s} onSelect={select} inset={drawer ? 396 : 0} />
+                  </Suspense>
+                ) : (
+                  <GraphView s={s} onSelect={select} inset={drawer ? 396 : 0} />
+                )}
+                <Inspector
+                  s={s}
+                  cypher={cypher}
+                  open={drawer}
+                  onClose={() => {
+                    select(null);
+                    setDismissed(s.phase);
+                  }}
+                />
+              </div>
+              <Dock s={s} onSelect={select} />
             </div>
-            <GraphView s={s} onSelect={select} />
-            <LogStrip log={s.log} />
           </section>
-          <Inspector s={s} cypher={cypher} />
         </div>
-        <Footer />
         <Dialog open={showCypher} onOpenChange={setShowCypher}>
           <DialogContent title="Cypher kintsugi runs">
             <p className="mb-2 font-sans text-sm leading-[22px] text-muted">

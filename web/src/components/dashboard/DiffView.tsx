@@ -15,7 +15,7 @@ export function DiffView({ s, cypher }: { s: State; cypher: Record<string, strin
   const diff = s.diff;
   if (!diff) return <Missing />;
   return (
-    <section className="min-h-0 self-start overflow-auto rounded-lg border border-rule bg-panel p-6">
+    <section className="min-h-0 flex-1 overflow-auto p-6">
       <h2 className="flex items-center gap-2 font-sans text-xl leading-[26px] font-medium">
         {diff.match && <CheckIcon size={20} className="text-gold" />}
         {diff.match
@@ -53,7 +53,7 @@ export function DiffView({ s, cypher }: { s: State; cypher: Record<string, strin
 
 export function Missing() {
   return (
-    <section className="rounded-lg border border-rule bg-panel p-6 font-sans text-sm text-muted">
+    <section className="p-6 font-sans text-sm text-muted">
       The report is sent live during a repair. Reset and run again to see it.
     </section>
   );
