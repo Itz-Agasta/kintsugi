@@ -1,25 +1,13 @@
 import {
   ArrowCounterClockwiseIcon,
-  ArrowsClockwiseIcon,
   CaretRightIcon,
   CheckIcon,
-  CircleDashedIcon,
   CircleIcon,
   CircleNotchIcon,
-  CirclesThreePlusIcon,
   CodeIcon,
-  DatabaseIcon,
-  EnvelopeSimpleIcon,
   FlagIcon,
-  GitForkIcon,
   GraphIcon,
-  MagnifyingGlassIcon,
-  PaperPlaneTiltIcon,
   PlayIcon,
-  ReceiptIcon,
-  ShieldCheckIcon,
-  SkipForwardIcon,
-  StackIcon,
   TimerIcon,
   WrenchIcon,
   type Icon,
@@ -121,20 +109,6 @@ const TITLES = {
   repaired: `Repaired ${SOURCE}`,
 };
 
-const STAT_ICONS: Record<string, Icon> = {
-  Actions: StackIcon,
-  Facts: DatabaseIcon,
-  Effects: PaperPlaneTiltIcon,
-  "Blast radius": CirclesThreePlusIcon,
-  Outside: ShieldCheckIcon,
-  "Re-run": ArrowsClockwiseIcon,
-  Skipped: SkipForwardIcon,
-  Pending: CircleDashedIcon,
-  "Can't undo": PaperPlaneTiltIcon,
-};
-
-const AGENTS: Icon[] = [MagnifyingGlassIcon, GitForkIcon, ReceiptIcon, EnvelopeSimpleIcon];
-
 function seconds(ms: number) {
   return `${Math.max(0, Math.round(ms / 1000))}s`;
 }
@@ -143,21 +117,7 @@ function Meta({ s, times, now }: { s: State; times: Times; now: number }) {
   if (s.phase === "idle") {
     return <span>Records a support desk where agents share memory in FalkorDB.</span>;
   }
-  const agents = (
-    <span className="flex items-center gap-1.5">
-      <span className="flex gap-0.5">
-        {AGENTS.map((I, i) => (
-          <i
-            key={i}
-            className="grid size-[22px] place-items-center rounded-[5px] bg-raised text-muted"
-          >
-            <I size={13} />
-          </i>
-        ))}
-      </span>
-      across {s.graph.nodes.filter((n) => n.label === "Agent").length} agents
-    </span>
-  );
+  const agents = <span>{s.graph.nodes.filter((n) => n.label === "Agent").length} agents</span>;
   return (
     <>
       {times.flagged && (
@@ -243,7 +203,7 @@ export function RunHeader({
 
   if (compact) {
     return (
-      <div className="flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2 rounded-[10px] border border-rule bg-panel px-4 py-2.5">
+      <div className="flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2 border-b border-rule px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-3">
           {tile}
           <div className="min-w-0">
@@ -259,11 +219,9 @@ export function RunHeader({
         <div className="flex-1" />
         <div className="flex">
           {stats(s).map((st) => {
-            const I = STAT_ICONS[st.label];
             return (
               <div key={st.label} className="border-l border-rule px-4">
                 <div className="flex items-center gap-1.5 font-sans text-[11.5px] leading-4 text-muted">
-                  {I && <I size={12} />}
                   {st.label}
                 </div>
                 <div className={cn("font-mono text-[22px] leading-7", st.gold && "text-gold")}>
@@ -288,7 +246,7 @@ export function RunHeader({
   }
 
   return (
-    <div className="rounded-[10px] border border-rule bg-panel">
+    <div className="border-b border-rule">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-7 px-[22px] py-[18px]">
         <div className="min-w-0">
           <div className="flex items-center gap-3">

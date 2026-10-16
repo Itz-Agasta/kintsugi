@@ -220,9 +220,11 @@ function Waterfall({
 export function Dock({ s, onSelect }: { s: State; onSelect: (id: string) => void }) {
   const [tab, setTab] = useState<"console" | "trace">("console");
   const [open, setOpen] = useState(true);
-  // Switch to the trace once the repair is done, where it has the most to show.
+  // The trace once the repair is done, where it has the most to show; the
+  // console again for a new run.
   useEffect(() => {
     if (s.phase === "repaired" && s.log.some((l) => l.ev)) setTab("trace");
+    if (s.phase === "idle" || s.phase === "running") setTab("console");
   }, [s.phase]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div

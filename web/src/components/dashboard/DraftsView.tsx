@@ -8,7 +8,7 @@ export function DraftsView({ s }: { s: State }) {
   const report = s.report;
   if (!report) return <Missing />;
   return (
-    <section className="min-h-0 self-start overflow-auto rounded-lg border border-rule bg-panel p-6">
+    <section className="min-h-0 flex-1 overflow-auto p-6">
       <h2 className="font-sans text-xl leading-[26px] font-medium">
         {report.compensation.length} effects can't be undone
       </h2>

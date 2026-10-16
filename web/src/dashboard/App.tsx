@@ -225,7 +225,8 @@ export default function App() {
             and the stage share the column to its right. */}
         <div className="flex min-h-0 gap-2.5 max-[1000px]:flex-col">
           <SpanTree s={s} onSelect={select} rail={rail} onToggle={() => setRail((r) => !r)} />
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5">
+          {/* One instrument: the run header, the stage bar and the stage share a panel. */}
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-rule bg-panel max-[1000px]:min-h-[720px]">
             <RunHeader
               s={s}
               times={times}
@@ -236,12 +237,7 @@ export default function App() {
             {tab === "diff" && <DiffView s={s} cypher={cypher} />}
             {tab === "drafts" && <DraftsView s={s} />}
             {/* Hidden rather than unmounted on the other tabs, so the graph keeps its canvas. */}
-            <section
-              className={cn(
-                "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-panel max-[1000px]:min-h-[640px]",
-                tab !== "overview" && "hidden",
-              )}
-            >
+            <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "overview" && "hidden")}>
               <div className="flex h-11 shrink-0 items-center justify-between border-b border-rule px-3.5 font-sans font-medium">
                 Provenance
                 <div className="flex items-center gap-5">
@@ -275,8 +271,8 @@ export default function App() {
                 />
               </div>
               <Dock s={s} onSelect={select} />
-            </section>
-          </div>
+            </div>
+          </section>
         </div>
         <Dialog open={showCypher} onOpenChange={setShowCypher}>
           <DialogContent title="Cypher kintsugi runs">

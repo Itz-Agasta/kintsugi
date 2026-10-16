@@ -100,9 +100,12 @@ export function Graph({
   );
   const framing = useMemo(
     () =>
-      pos.size && size.h
+      size.h
         ? frame(
-            [...[...pos.values()].map((p) => p.x), ...(kept?.count ? [kept.x] : [])],
+            // An empty graph still frames its lanes, around x = 0.
+            pos.size
+              ? [...[...pos.values()].map((p) => p.x), ...(kept?.count ? [kept.x] : [])]
+              : [0],
             size.w - inset,
             size.h,
           )
