@@ -1,9 +1,12 @@
+import { cn } from "cn";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Footer } from "@/components/dashboard/Footer";
 import { Graph as GraphView } from "@/components/dashboard/Graph";
 import { ChromeStrip, RunHeader, type Times } from "@/components/dashboard/Header";
 import { LogStrip } from "@/components/dashboard/LogStrip";
+import { DiffView } from "@/components/dashboard/DiffView";
+import { DraftsView } from "@/components/dashboard/DraftsView";
 import { Inspector } from "@/components/dashboard/Inspector";
 import { SpanTree } from "@/components/dashboard/SpanTree";
 import { CypherBlock } from "@/components/CypherBlock";
@@ -165,6 +168,7 @@ export default function App() {
     );
   };
   const [showCypher, setShowCypher] = useState(false);
+  const tab = s.phase === "repaired" ? s.tab : "overview";
 
   const resetRef = useRef(reset);
   useEffect(() => {
@@ -200,7 +204,15 @@ export default function App() {
           onPrimary={primary}
           onTab={(tab) => dispatch({ type: "tab", tab })}
         />
-        <div className="grid min-h-0 grid-cols-[340px_minmax(0,1fr)_360px] gap-2.5 max-[1000px]:grid-cols-1">
+        {tab === "diff" && <DiffView s={s} cypher={cypher} />}
+        {tab === "drafts" && <DraftsView s={s} />}
+        {/* Hidden rather than unmounted on the other tabs, so the graph keeps its canvas. */}
+        <div
+          className={cn(
+            "grid min-h-0 grid-cols-[340px_minmax(0,1fr)_360px] gap-2.5 max-[1000px]:grid-cols-1",
+            tab !== "overview" && "hidden",
+          )}
+        >
           <SpanTree s={s} onSelect={select} />
           <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-rule bg-panel">
             <div className="flex h-11 items-center justify-between border-b border-rule px-3.5 font-sans font-medium">

@@ -253,7 +253,7 @@ export function Graph({ s, onSelect }: { s: State; onSelect: (id: string | null)
   }, [s.front, s.graph, pos]);
 
   return (
-    <div className="relative min-h-[300px] flex-1 overflow-hidden bg-canvas">
+    <div className="relative min-h-[300px] flex-1 overflow-hidden bg-canvas max-[1000px]:min-h-[560px]">
       {LANES.map((name, i) => {
         const I = ICONS[LANE_ICON[i]];
         return (

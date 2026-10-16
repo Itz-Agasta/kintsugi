@@ -22,7 +22,7 @@ export function CopyId({
     <Tooltip>
       <TooltipTrigger
         onClick={copy}
-        className="inline-flex items-center gap-1.5 rounded-sm border border-rule bg-panel px-[7px] py-[3px] font-mono text-[12.5px] leading-4 text-muted hover:text-text [&_svg]:text-faint"
+        className="inline-flex items-center gap-1.5 rounded-sm border border-rule bg-panel whitespace-nowrap px-[7px] py-[3px] font-mono text-[12.5px] leading-4 text-muted hover:text-text [&_svg]:text-faint"
       >
         {icon}
         {children ?? value}

@@ -76,7 +76,7 @@ export function ChromeStrip({
         <Logo />
         Kintsugi
       </div>
-      <div className="flex min-w-0 items-center gap-2 text-faint">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-faint">
         <CaretRightIcon size={14} />
         <CopyId value={graphId} icon={<GraphIcon size={13} />} />
         {repairId && (
@@ -89,7 +89,7 @@ export function ChromeStrip({
         )}
       </div>
       <div className="flex-1" />
-      <span className="flex items-center gap-[7px] font-sans text-[13px] text-muted">
+      <span className="flex items-center gap-[7px] font-sans text-[13px] whitespace-nowrap text-muted max-[1000px]:hidden">
         {up === false ? (
           <CircleIcon size={9} className="text-faint" />
         ) : (
