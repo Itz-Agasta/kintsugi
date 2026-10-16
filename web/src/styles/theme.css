@@ -113,6 +113,14 @@
   button {
     font: inherit;
   }
+  /* Cypher must read as typed: no arrow ligatures for -> and <-. */
+  pre,
+  code {
+    font-variant-ligatures: none;
+    font-feature-settings:
+      "liga" 0,
+      "calt" 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
