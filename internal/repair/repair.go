@@ -308,6 +308,7 @@ func (e *engine) runNew(j recorder.Job, after float64) (float64, error) {
 	if n, ok := next[0][0].(float64); ok {
 		seq = (after + n) / 2
 	}
+	started := time.Now()
 	a, err := recorder.Start(e.g, j, seq)
 	if err != nil {
 		return 0, err
@@ -319,7 +320,7 @@ func (e *engine) runNew(j recorder.Job, after float64) (float64, error) {
 	if err := e.exec(store.Created, map[string]any{"rid": e.rid, "id": a.ID, "output": held.Output, "output_hash": held.OutputHash, "input_hash": held.InputHash}); err != nil {
 		return 0, err
 	}
-	e.event(a, "new", decision{start: time.Now()})
+	e.event(a, "new", decision{start: started})
 	if err := e.writeEffects(a.ID, held); err != nil {
 		return 0, err
 	}

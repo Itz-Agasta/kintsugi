@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { Graph, GraphNode } from "@/lib/types";
-import { COL_W, LANE_H, SLOT, layout } from "./layout";
+import { COL_W, LANE_H, SLOT, laneIndex, layout } from "./layout";
 
 const act = (id: string, tool: string, ticket: string, seq: number, status = "ok"): GraphNode => ({
   id,
@@ -79,5 +79,14 @@ describe("layout", () => {
     expect(f.pos.has("a8")).toBe(false);
     expect(f.pos.has("a2")).toBe(true);
     expect(f.kept!.x).toBeGreaterThan(f.pos.get("a2")!.x);
+  });
+});
+
+describe("laneIndex", () => {
+  it("keeps a deep effects stack in the effects lane", () => {
+    expect(laneIndex(0)).toBe(0);
+    expect(laneIndex(3 * LANE_H + 10)).toBe(3);
+    expect(laneIndex(6 * LANE_H + 60)).toBe(6);
+    expect(laneIndex(6 * LANE_H - 12)).toBe(6);
   });
 });

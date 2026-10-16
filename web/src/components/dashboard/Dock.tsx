@@ -130,13 +130,32 @@ function Trace({ s, onSelect }: { s: State; onSelect: (id: string) => void }) {
     .map((l) => l.ev)
     .filter((e): e is RepairEvent => !!e && e.start_ms !== undefined)
     .reverse();
-  if (evs.length === 0) {
-    return (
-      <div className="px-3 py-2 font-mono text-xs text-faint">
-        The repair trace appears here while it runs.
-      </div>
-    );
-  }
+  // One wrapper holds the ref in both states, so the width is observed from
+  // the first render on.
+  return (
+    <div ref={box} className="h-full overflow-auto">
+      {evs.length === 0 ? (
+        <div className="px-3 py-2 font-mono text-xs text-faint">
+          The repair trace appears here while it runs.
+        </div>
+      ) : (
+        <Waterfall evs={evs} w={w} s={s} onSelect={onSelect} />
+      )}
+    </div>
+  );
+}
+
+function Waterfall({
+  evs,
+  w,
+  s,
+  onSelect,
+}: {
+  evs: RepairEvent[];
+  w: number;
+  s: State;
+  onSelect: (id: string) => void;
+}) {
   const LABEL = 150;
   const ROW = 14;
   const end = Math.max(...evs.map((e) => (e.start_ms ?? 0) + (e.dur_ms ?? 0)), 1);
@@ -145,58 +164,56 @@ function Trace({ s, onSelect }: { s: State; onSelect: (id: string) => void }) {
     .range([LABEL, w - 16]);
   const h = 22 + evs.length * ROW;
   return (
-    <div ref={box} className="h-full overflow-auto">
-      <svg width={w} height={h} className="block font-mono text-[10.5px]">
-        {x.ticks(8).map((t) => (
-          <g key={t}>
-            <line x1={x(t)} x2={x(t)} y1={16} y2={h} className="stroke-rule" />
-            <text x={x(t)} y={11} textAnchor="middle" className="fill-faint">
-              {t >= 1000 ? `${(t / 1000).toFixed(1)}s` : `${t}ms`}
+    <svg width={w} height={h} className="block font-mono text-[10.5px]">
+      {x.ticks(8).map((t) => (
+        <g key={t}>
+          <line x1={x(t)} x2={x(t)} y1={16} y2={h} className="stroke-rule" />
+          <text x={x(t)} y={11} textAnchor="middle" className="fill-faint">
+            {t >= 1000 ? `${(t / 1000).toFixed(1)}s` : `${t}ms`}
+          </text>
+        </g>
+      ))}
+      {evs.map((e, i) => {
+        const y = 20 + i * ROW;
+        const sel = e.action_id === s.selected;
+        return (
+          <g
+            key={e.action_id + e.status}
+            className="cursor-pointer"
+            onClick={() => onSelect(e.action_id)}
+          >
+            <rect
+              x={0}
+              y={y - 1}
+              width={w}
+              height={ROW}
+              className={sel ? "fill-raised" : "fill-transparent"}
+            />
+            <text x={12} y={y + 9} className={sel ? "fill-text" : "fill-muted"}>
+              {e.tool} {e.ticket_id}
             </text>
-          </g>
-        ))}
-        {evs.map((e, i) => {
-          const y = 20 + i * ROW;
-          const sel = e.action_id === s.selected;
-          return (
-            <g
-              key={e.action_id + e.status}
-              className="cursor-pointer"
-              onClick={() => onSelect(e.action_id)}
-            >
-              <rect
-                x={0}
-                y={y - 1}
-                width={w}
-                height={ROW}
-                className={sel ? "fill-raised" : "fill-transparent"}
-              />
-              <text x={12} y={y + 9} className={sel ? "fill-text" : "fill-muted"}>
-                {e.tool} {e.ticket_id}
-              </text>
+            <rect
+              x={x(e.start_ms ?? 0)}
+              y={y + 2}
+              width={Math.max(2, x((e.start_ms ?? 0) + (e.dur_ms ?? 0)) - x(e.start_ms ?? 0))}
+              height={ROW - 5}
+              rx={2}
+              className={cn(BAR[e.status], "stroke-1")}
+            />
+            {e.query_ms !== undefined && (
+              // The MustRerun query's share of the decision.
               <rect
                 x={x(e.start_ms ?? 0)}
-                y={y + 2}
-                width={Math.max(2, x((e.start_ms ?? 0) + (e.dur_ms ?? 0)) - x(e.start_ms ?? 0))}
-                height={ROW - 5}
-                rx={2}
-                className={cn(BAR[e.status], "stroke-1")}
+                y={y + ROW - 4}
+                width={Math.max(1.5, x((e.start_ms ?? 0) + e.query_ms) - x(e.start_ms ?? 0))}
+                height={1.5}
+                className="fill-text"
               />
-              {e.query_ms !== undefined && (
-                // The MustRerun query's share of the decision.
-                <rect
-                  x={x(e.start_ms ?? 0)}
-                  y={y + ROW - 4}
-                  width={Math.max(1.5, x((e.start_ms ?? 0) + e.query_ms) - x(e.start_ms ?? 0))}
-                  height={1.5}
-                  className="fill-text"
-                />
-              )}
-            </g>
-          );
-        })}
-      </svg>
-    </div>
+            )}
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 

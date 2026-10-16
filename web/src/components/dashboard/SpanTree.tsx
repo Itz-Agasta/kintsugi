@@ -117,7 +117,7 @@ function Rail({
   const { shown, kept } = groups(s);
   const selTicket = s.graph.nodes.find((n) => n.id === s.selected)?.props.ticket_id ?? null;
   return (
-    <section className="flex w-[68px] shrink-0 flex-col overflow-hidden rounded-lg border border-rule bg-panel max-[1000px]:hidden">
+    <section className="flex w-[68px] shrink-0 flex-col overflow-hidden rounded-lg border border-rule bg-panel">
       <button
         type="button"
         onClick={onToggle}

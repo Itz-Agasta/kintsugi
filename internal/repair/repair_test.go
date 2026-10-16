@@ -436,6 +436,10 @@ func TestEventsCarryDecisionAndTiming(t *testing.T) {
 				t.Errorf("%s %s: must_rerun set", e.Status, e.ActionID)
 			}
 		}
+		// A new action's span covers its own replay, so it is never empty.
+		if e.Status == "new" && e.DurMs <= 0 {
+			t.Errorf("new %s: dur_ms = %v, want > 0", e.ActionID, e.DurMs)
+		}
 		if e.StartMs < 0 || e.DurMs < 0 || e.StartMs < last {
 			t.Errorf("%s %s: start %v dur %v after start %v", e.Status, e.ActionID, e.StartMs, e.DurMs, last)
 		}

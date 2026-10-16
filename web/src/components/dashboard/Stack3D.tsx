@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line, OrbitControls, RoundedBox, Text } from "@react-three/drei";
 import * as THREE from "three";
 import monoFont from "@fontsource/fragment-mono/files/fragment-mono-latin-400-normal.woff?url";
-import { LANES, LANE_H, layout } from "@/dashboard/layout";
+import { LANES, LANE_H, laneIndex, layout } from "@/dashboard/layout";
 import { labelFor, pillWidth } from "@/dashboard/marks";
 import { statusOf, type State, type UiStatus } from "@/dashboard/state";
 import { SOURCE, type GraphEdge } from "@/lib/types";
@@ -91,8 +91,9 @@ function Pill({
   lk,
   dim,
   selected,
-  litAt,
-  popAt,
+  hop,
+  flagAt,
+  pops,
   onSelect,
 }: {
   id: string;
@@ -101,8 +102,11 @@ function Pill({
   lk: Look;
   dim: boolean;
   selected: boolean;
-  litAt: number | null;
-  popAt: number | null;
+  // Hops from the flagged page, for the pulse; the refs are read every frame
+  // so a flag or a decision shows on the next frame, not the next render.
+  hop: number | undefined;
+  flagAt: React.RefObject<number | null>;
+  pops: React.RefObject<Map<string, number>>;
   onSelect: (id: string) => void;
 }) {
   const group = useRef<THREE.Group>(null);
@@ -117,6 +121,9 @@ function Pill({
     if (!g) return;
     g.position.lerp(new THREE.Vector3(...at), 0.18);
     const now = performance.now();
+    const litAt =
+      flagAt.current !== null && hop !== undefined ? flagAt.current + hop * HOP_MS : null;
+    const popAt = pops.current.get(id) ?? null;
     let k = 0;
     if (litAt !== null && now >= litAt) k = Math.max(0, 1 - (now - litAt) / 450);
     if (fill.current) fill.current.color.copy(base).lerp(flash, k * 0.85);
@@ -287,7 +294,7 @@ export function Stack3D({
   const at = (id: string): Vec | null => {
     const p = pos.get(id);
     if (!p) return null;
-    const lane = Math.round(p.y / LANE_H);
+    const lane = laneIndex(p.y);
     return [p.x * U, -lane * DY - (p.y - lane * LANE_H) * U, -lane * DZ];
   };
   const xs = [...pos.values()].map((p) => p.x * U);
@@ -499,10 +506,9 @@ export function Stack3D({
                 lk={look(n.label, st, n.props)}
                 dim={flagged && !focus.has(n.id)}
                 selected={n.id === s.selected}
-                litAt={
-                  flagAt.current !== null && h !== undefined ? flagAt.current + h * HOP_MS : null
-                }
-                popAt={pops.current.get(n.id) ?? null}
+                hop={h}
+                flagAt={flagAt}
+                pops={pops}
                 onSelect={(id) => n.label === "Action" && onSelect(id)}
               />
             );

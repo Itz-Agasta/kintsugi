@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
 import { ArrowRightIcon } from "@phosphor-icons/react";
-import { COL_W, LANE_H, LANES, layout } from "@/dashboard/layout";
+import { COL_W, LANE_H, LANES, laneIndex, layout } from "@/dashboard/layout";
 import { ICONS, classesFor, labelFor, pillWidth, stylesheet } from "@/dashboard/marks";
 import { statusOf, type State, type UiStatus } from "@/dashboard/state";
 import { SOURCE, type GraphEdge } from "@/lib/types";
@@ -48,7 +48,7 @@ function seam(s: State): { edges: Set<string>; nodes: Set<string> } {
 // stretch moves a node's lane by k but keeps its offset inside the lane, so
 // stacked effects keep their spacing.
 function stretch(y: number, k: number): number {
-  const lane = Math.round(y / LANE_H) * LANE_H;
+  const lane = laneIndex(y) * LANE_H;
   return lane * k + (y - lane);
 }
 
