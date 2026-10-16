@@ -92,7 +92,7 @@ function Console({ s, onSelect }: { s: State; onSelect: (id: string) => void }) 
   useLayoutEffect(() => {
     const el = box.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [s.log.length]);
+  }, [s.log]);
   return (
     <div ref={box} className="h-full overflow-auto py-1.5 font-mono text-xs leading-[19px]">
       {lines.length === 0 && (
