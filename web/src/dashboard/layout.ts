@@ -21,7 +21,7 @@ export const RESEARCH_W = 200;
 // Effects of one ticket stack in its column, this far apart (not stretched).
 export const EFFECT_GAP = 24;
 
-export function laneOf(n: GraphNode): number | null {
+function laneOf(n: GraphNode): number | null {
   switch (n.label) {
     case "Source":
       return 0;

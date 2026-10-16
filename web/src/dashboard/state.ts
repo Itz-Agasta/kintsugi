@@ -73,7 +73,7 @@ function log(s: State, text: string, mark: Pick<LogLine, "gold" | "error"> = {})
 }
 
 // Plain words for each status, as the log and chips say them.
-export const WORDS: Record<UiStatus, string> = {
+const WORDS: Record<UiStatus, string> = {
   ok: "same",
   poisoned: "poisoned",
   rerun_changed: "changed",

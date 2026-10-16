@@ -11,7 +11,7 @@ export const DIFF_PARTS = [
 
 // Report is the inspector after a repair with nothing selected: how the
 // repaired graph compares with the clean run, and what cannot be undone.
-export function Report({ s }: { s: State; cypher: Record<string, string> }) {
+export function Report({ s }: { s: State }) {
   if (!s.report || !s.diff) {
     return (
       <Section last>

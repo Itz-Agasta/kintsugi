@@ -10,7 +10,7 @@ const DRAWN = new Set(["INGESTED", "WROTE", "READ", "HANDED_OFF", "CAUSED"]);
 const REPAIRED: UiStatus[] = ["rerun_changed", "new"];
 const LANE_ICON = ["source", "research", "fact", "triage", "refund", "notifier", "effect"];
 
-type View = { zoom: number; x: number; y: number; w: number };
+type View = { zoom: number; x: number; y: number };
 
 // seam returns the edge ids on the gold causal path. The path API walks FEEDS
 // edges, which the canvas draws as the WROTE and READ pair through a fact.
@@ -73,7 +73,7 @@ export function Graph({ s, onSelect }: { s: State; onSelect: (id: string | null)
   const box = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const [ready, setReady] = useState(false);
-  const [view, setView] = useState<View>({ zoom: 1, x: 0, y: 0, w: 0 });
+  const [view, setView] = useState<View>({ zoom: 1, x: 0, y: 0 });
   const [size, setSize] = useState({ w: 0, h: 0 });
   const select = useRef(onSelect);
   useEffect(() => {
@@ -120,7 +120,7 @@ export function Graph({ s, onSelect }: { s: State; onSelect: (id: string | null)
         raf = requestAnimationFrame(() => {
           if (!cy) return;
           const p = cy.pan();
-          setView({ zoom: cy.zoom(), x: p.x, y: p.y, w: cy.width() });
+          setView({ zoom: cy.zoom(), x: p.x, y: p.y });
         });
       };
       cy.on("viewport resize", sync);

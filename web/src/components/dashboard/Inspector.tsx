@@ -178,7 +178,7 @@ function Detail({ s, d, cypher }: { s: State; d: ActionDetail; cypher: Record<st
 }
 
 function Empty({ s, cypher }: { s: State; cypher: Record<string, string> }) {
-  if (s.phase === "repaired") return <Report s={s} cypher={cypher} />;
+  if (s.phase === "repaired") return <Report s={s} />;
   if (s.phase === "flagged" || s.phase === "repairing") {
     return (
       <Section last>

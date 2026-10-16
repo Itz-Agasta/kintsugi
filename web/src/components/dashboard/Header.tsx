@@ -33,7 +33,7 @@ import { busy, stats, step, strip, type State, type Tab, type UiStatus } from "@
 
 export type Times = { flagged: string | null; started: number | null; ended: number | null };
 
-export function Logo() {
+function Logo() {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
       <path
