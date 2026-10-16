@@ -219,7 +219,8 @@ function Waterfall({
 
 export function Dock({ s, onSelect }: { s: State; onSelect: (id: string) => void }) {
   const [tab, setTab] = useState<"console" | "trace">("console");
-  const [open, setOpen] = useState(true);
+  // Collapsed until asked for; the bar still shows the newest line.
+  const [open, setOpen] = useState(false);
   // The trace once the repair is done, where it has the most to show; the
   // console again for a new run.
   useEffect(() => {
@@ -234,7 +235,13 @@ export function Dock({ s, onSelect }: { s: State; onSelect: (id: string) => void
       )}
     >
       <div className="flex h-9 shrink-0 items-stretch justify-between border-b border-rule px-3">
-        <Tabs value={tab} onValueChange={(v) => setTab(v as "console" | "trace")}>
+        <Tabs
+          value={open ? tab : null}
+          onValueChange={(v) => {
+            setTab(v as "console" | "trace");
+            setOpen(true);
+          }}
+        >
           <TabsList className="h-full">
             <TabsTrigger value="console">
               <TerminalIcon size={14} />
@@ -246,6 +253,21 @@ export function Dock({ s, onSelect }: { s: State; onSelect: (id: string) => void
             </TabsTrigger>
           </TabsList>
         </Tabs>
+        {!open && s.log[0] && (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className={cn(
+              "mx-4 min-w-0 flex-1 truncate text-left font-mono text-xs",
+              s.log[0].gold ? "text-gold" : "text-muted",
+            )}
+          >
+            <span className="mr-2.5 text-faint">{s.log[0].t}</span>
+            {s.log[0].ev
+              ? `${s.log[0].ev.tool} ${s.log[0].ev.ticket_id} ${s.log[0].ev.must_rerun === undefined ? "" : `must_rerun=${s.log[0].ev.must_rerun} `}${s.log[0].ev.query_ms !== undefined ? `${s.log[0].ev.query_ms.toFixed(2)}ms ` : ""}${s.log[0].ev.status}`
+              : s.log[0].text}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}

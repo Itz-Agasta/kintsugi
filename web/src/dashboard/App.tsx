@@ -179,7 +179,7 @@ export default function App() {
   const [showCypher, setShowCypher] = useState(false);
   const tab = s.phase === "repaired" ? s.tab : "overview";
   const [rail, setRail] = useState(false);
-  const [view, setView] = useState<"2d" | "3d">("2d");
+  const [view, setView] = useState<"2d" | "3d">("3d");
   // The drawer opens on a selection, and on its own when flagged or repaired
   // until the viewer closes it for that phase.
   const [dismissed, setDismissed] = useState<string | null>(null);
