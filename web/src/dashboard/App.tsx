@@ -78,6 +78,7 @@ export default function App() {
   const run = () => {
     if (stream.current || busy(s)) return;
     setTimes(NO_TIMES);
+    setDismissed(null);
     dispatch({ type: "run/start" });
     let last = 0;
     stream.current = openStream(
@@ -150,6 +151,7 @@ export default function App() {
     post("/api/reset").then(
       () => {
         setTimes(NO_TIMES);
+        setDismissed(null);
         dispatch({ type: "reset" });
       },
       (e: unknown) => dispatch({ type: "fail", message: message(e) }),

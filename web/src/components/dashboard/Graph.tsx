@@ -4,46 +4,14 @@ import { ArrowRightIcon } from "@phosphor-icons/react";
 import { COL_W, LANE_H, LANES, laneIndex, layout } from "@/dashboard/layout";
 import { ICONS, classesFor, labelFor, pillWidth, stylesheet } from "@/dashboard/marks";
 import { statusOf, type State, type UiStatus } from "@/dashboard/state";
-import { SOURCE, type GraphEdge } from "@/lib/types";
+import { seam } from "@/dashboard/seam";
+import { SOURCE } from "@/lib/types";
 
 const DRAWN = new Set(["INGESTED", "WROTE", "READ", "HANDED_OFF", "CAUSED"]);
 const REPAIRED: UiStatus[] = ["rerun_changed", "new"];
 const LANE_ICON = ["source", "research", "fact", "triage", "refund", "notifier", "effect"];
 
 type View = { zoom: number; x: number; y: number };
-
-// seam returns the edge ids on the gold causal path. The path API walks FEEDS
-// edges, which the canvas draws as the WROTE and READ pair through a fact.
-function seam(s: State): { edges: Set<string>; nodes: Set<string> } {
-  const edges = new Set<string>();
-  const nodes = new Set<string>(s.path?.nodes ?? []);
-  const id = (e: GraphEdge) => `${e.from}|${e.type}|${e.to}`;
-  for (const e of s.path?.edges ?? []) {
-    if (e.type !== "FEEDS") {
-      edges.add(id(e));
-      continue;
-    }
-    for (const w of s.graph.edges) {
-      if (w.type !== "WROTE" || w.from !== e.from) continue;
-      const r = s.graph.edges.find((x) => x.type === "READ" && x.from === e.to && x.to === w.to);
-      if (r) {
-        edges.add(id(w));
-        edges.add(id(r));
-        nodes.add(w.to);
-      }
-    }
-  }
-  // On from the selected action to what it handed off to, now.
-  if (s.path && s.selected) {
-    for (const e of s.graph.edges) {
-      if (e.type === "HANDED_OFF" && e.from === s.selected && statusOf(s, e.to) !== "superseded") {
-        edges.add(id(e));
-        nodes.add(e.to);
-      }
-    }
-  }
-  return { edges, nodes };
-}
 
 // stretch moves a node's lane by k but keeps its offset inside the lane, so
 // stacked effects keep their spacing.

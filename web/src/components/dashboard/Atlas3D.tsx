@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { cn } from "cn";
 import { LANES } from "@/dashboard/layout";
 import { labelFor } from "@/dashboard/marks";
+import { seam } from "@/dashboard/seam";
 import { statusOf, type State, type UiStatus } from "@/dashboard/state";
 import { SOURCE, type GraphEdge, type GraphNode } from "@/lib/types";
 
@@ -428,10 +429,13 @@ function Scene({
     return sprite;
   }, []);
 
-  const path = new Set((s.path?.edges ?? []).map((e) => `${e.from}|${e.type}|${e.to}`));
+  const path = seam(s).edges;
+  // A link is repaired when the action downstream of it re-ran and changed;
+  // for an effect, that is the action that caused it.
   const repaired = (l: L) => {
-    const t = typeof l.target === "string" ? l.target : l.target.id;
-    return ["rerun_changed", "new"].includes(statusOf(s, t) ?? "");
+    const end = l.type === "CAUSED" ? l.source : l.target;
+    const id = typeof end === "string" ? end : end.id;
+    return ["rerun_changed", "new"].includes(statusOf(s, id) ?? "");
   };
   const inBlast = (l: L) => {
     const a = typeof l.source === "string" ? l.source : l.source.id;
