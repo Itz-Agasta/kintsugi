@@ -97,10 +97,19 @@ export function statusOf(s: State, id: string): UiStatus | undefined {
   return n?.label === "Action" ? ((n.props.status as Status | undefined) ?? "ok") : undefined;
 }
 
-// next moves "running" to the lowest-seq pending blast action.
-function next(s: State, overrides: Record<string, UiStatus>): Record<string, UiStatus> {
-  const pending = actions({ ...s, overrides }).find((n) => overrides[n.id] === "pending");
-  return pending ? { ...overrides, [pending.id]: "running" } : overrides;
+// next marks as running the first pending action after the repair front,
+// or the first pending one when none is after it.
+function next(
+  s: State,
+  overrides: Record<string, UiStatus>,
+  front: number | null,
+): Record<string, UiStatus> {
+  const out = { ...overrides };
+  for (const id of Object.keys(out)) if (out[id] === "running") out[id] = "pending";
+  const pending = actions({ ...s, overrides: out }).filter((n) => out[n.id] === "pending");
+  const pick = pending.find((n) => front === null || Number(n.props.seq) > front) ?? pending[0];
+  if (pick) out[pick.id] = "running";
+  return out;
 }
 
 export function reduce(s: State, m: Msg): State {
@@ -169,7 +178,7 @@ export function reduce(s: State, m: Msg): State {
         ...s,
         phase: "repairing",
         before: s.phase,
-        overrides: next(s, overrides),
+        overrides: next(s, overrides, null),
         log: log(s, "repair started"),
       };
     }
@@ -190,16 +199,15 @@ export function reduce(s: State, m: Msg): State {
         };
         graph = { ...graph, nodes: [...graph.nodes, node] };
       }
-      const t = { ...s, graph };
-      const overrides = { ...s.overrides, [ev.action_id]: ev.status };
-      const wasRunning = s.overrides[ev.action_id] === "running";
+      // Superseded and new actions are side effects of a decision; only
+      // decided actions move the front, which walks in seq order.
+      const decided = ev.status !== "superseded" && ev.status !== "new";
+      const front = decided ? ev.seq : s.front;
       return {
-        ...t,
-        overrides:
-          wasRunning || !Object.values(overrides).includes("running")
-            ? next(t, overrides)
-            : overrides,
-        front: ev.seq,
+        ...s,
+        graph,
+        overrides: next({ ...s, graph }, { ...s.overrides, [ev.action_id]: ev.status }, front),
+        front,
         log: log(s, `${ev.tool} ${ev.ticket_id} ${WORDS[ev.status]}`, {
           gold: ev.status === "rerun_changed" || ev.status === "new",
         }),

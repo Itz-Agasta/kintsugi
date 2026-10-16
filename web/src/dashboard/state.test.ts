@@ -121,6 +121,30 @@ describe("reduce", () => {
     expect(s.front).toBe(1);
   });
 
+  it("superseded and new events do not move the front", () => {
+    const g2: Graph = { nodes: [...graph.nodes, act("a9", 9)], edges: [] };
+    let s = run(
+      initial,
+      { type: "graph", graph: g2 },
+      { type: "run/done" },
+      { type: "blast", ids: ["a1", "a2", "a9"] },
+    );
+    s = run(
+      s,
+      { type: "repair/start" },
+      {
+        type: "repair/action",
+        ev: { action_id: "a1", tool: "triage", ticket_id: "t01", status: "rerun_changed", seq: 1 },
+      },
+      {
+        type: "repair/action",
+        ev: { action_id: "a9", tool: "refund", ticket_id: "t01", status: "superseded", seq: 9 },
+      },
+    );
+    expect(s.front).toBe(1);
+    expect(s.overrides.a2).toBe("running");
+  });
+
   it("repair/action adds an unknown (new) action", () => {
     const ev = {
       action_id: "n1",
