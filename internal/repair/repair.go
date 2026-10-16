@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/Itz-Agasta/kintsugi/internal/model"
@@ -18,13 +19,27 @@ import (
 	"github.com/Itz-Agasta/kintsugi/internal/store"
 )
 
-// Event is one action decided during a repair.
+// Event is one action decided during a repair. MustRerun and QueryMs are set
+// for actions the MustRerun query decided (re-run or skipped): its answer and
+// FalkorDB's internal execution time for it. StartMs is when the decision
+// began, counted from the start of the repair, and DurMs how long it took.
 type Event struct {
-	ActionID string  `json:"action_id"`
-	Tool     string  `json:"tool"`
-	TicketID string  `json:"ticket_id"`
-	Status   string  `json:"status"`
-	Seq      float64 `json:"seq"`
+	ActionID  string  `json:"action_id"`
+	Tool      string  `json:"tool"`
+	TicketID  string  `json:"ticket_id"`
+	Status    string  `json:"status"`
+	Seq       float64 `json:"seq"`
+	MustRerun *bool   `json:"must_rerun,omitempty"`
+	QueryMs   float64 `json:"query_ms,omitempty"`
+	StartMs   float64 `json:"start_ms"`
+	DurMs     float64 `json:"dur_ms"`
+}
+
+// decision is what an event reports about how its action was decided.
+type decision struct {
+	start time.Time
+	must  *bool
+	ms    float64
 }
 
 // CompItem is an effect that really left the system and is now wrong.
@@ -50,12 +65,13 @@ type engine struct {
 	rid     string
 	agents  map[string]recorder.AgentFunc
 	onEvent func(Event)
+	t0      time.Time
 	pending map[string]float64 // action id to seq; a set, so nothing runs twice
 }
 
 // Run repairs g after source turned out to be bad.
 func Run(ctx context.Context, g *falkordb.Graph, source string, agents map[string]recorder.AgentFunc, d model.Drafter, onEvent func(Event)) (*Report, error) {
-	e := &engine{ctx: ctx, g: g, rid: newID(), agents: agents, onEvent: onEvent, pending: map[string]float64{}}
+	e := &engine{ctx: ctx, g: g, rid: newID(), agents: agents, onEvent: onEvent, t0: time.Now(), pending: map[string]float64{}}
 	src := map[string]any{"src": source}
 
 	done, err := e.rows(store.RepairCount, nil)
@@ -123,15 +139,19 @@ func (e *engine) step(id string) error {
 	if r[4] == "superseded" {
 		return nil
 	}
-	must, err := e.rows(store.MustRerun, map[string]any{"id": id})
+	d := decision{start: time.Now()}
+	res, err := e.g.Query(store.MustRerun, map[string]any{"id": id}, nil)
 	if err != nil {
 		return err
 	}
-	if must[0][0] != true {
+	res.Next()
+	must := res.Record().Values()[0] == true
+	d.must, d.ms = &must, res.InternalExecutionTime()
+	if !must {
 		if err := e.exec(store.SetStatus, map[string]any{"id": id, "status": "skipped"}); err != nil {
 			return err
 		}
-		e.event(a, "skipped")
+		e.event(a, "skipped", d)
 		return nil
 	}
 
@@ -146,7 +166,7 @@ func (e *engine) step(id string) error {
 	if err := e.exec(store.Reran, map[string]any{"rid": e.rid, "id": id, "status": status, "output": held.Output, "output_hash": held.OutputHash, "input_hash": held.InputHash}); err != nil {
 		return err
 	}
-	e.event(a, status)
+	e.event(a, status, d)
 	if status == "rerun_same" {
 		return nil // old effects and children stand
 	}
@@ -299,7 +319,7 @@ func (e *engine) runNew(j recorder.Job, after float64) (float64, error) {
 	if err := e.exec(store.Created, map[string]any{"rid": e.rid, "id": a.ID, "output": held.Output, "output_hash": held.OutputHash, "input_hash": held.InputHash}); err != nil {
 		return 0, err
 	}
-	e.event(a, "new")
+	e.event(a, "new", decision{start: time.Now()})
 	if err := e.writeEffects(a.ID, held); err != nil {
 		return 0, err
 	}
@@ -366,15 +386,21 @@ func (e *engine) popMin() string {
 	return id
 }
 
-func (e *engine) event(a recorder.ActionRef, status string) {
-	if e.onEvent != nil {
-		e.onEvent(Event{ActionID: a.ID, Tool: a.Tool, TicketID: a.TicketID, Status: status, Seq: a.Seq})
+func (e *engine) event(a recorder.ActionRef, status string, d decision) {
+	if e.onEvent == nil {
+		return
 	}
+	ms := func(t time.Duration) float64 { return float64(t.Microseconds()) / 1000 }
+	e.onEvent(Event{
+		ActionID: a.ID, Tool: a.Tool, TicketID: a.TicketID, Status: status, Seq: a.Seq,
+		MustRerun: d.must, QueryMs: d.ms,
+		StartMs: ms(d.start.Sub(e.t0)), DurMs: ms(time.Since(d.start)),
+	})
 }
 
 // emit sends an event for a row shaped (id, tool, ticket_id, seq).
 func (e *engine) emit(r []any, status string) {
-	e.event(recorder.ActionRef{ID: r[0].(string), Tool: r[1].(string), TicketID: r[2].(string), Seq: r[3].(float64)}, status)
+	e.event(recorder.ActionRef{ID: r[0].(string), Tool: r[1].(string), TicketID: r[2].(string), Seq: r[3].(float64)}, status, decision{start: time.Now()})
 }
 
 func (e *engine) exec(q string, params map[string]any) error {
