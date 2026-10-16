@@ -210,15 +210,18 @@ export function RunHeader({
       className={cn(
         "grid shrink-0 place-items-center rounded-[7px] border",
         compact ? "size-8" : "size-7",
-        repairing ? "border-gold-line bg-gold-tint text-gold" : "border-line bg-raised text-muted",
+        repairing || s.phase === "repaired"
+          ? "border-gold-line bg-gold-tint text-gold"
+          : s.phase === "flagged"
+            ? "border-text bg-text text-bg"
+            : "border-line bg-raised text-muted",
       )}
     >
       {spinning ? (
         <CircleNotchIcon size={16} className="animate-spin motion-reduce:animate-none" />
-      ) : s.phase === "repaired" ? (
-        <CheckIcon size={16} />
       ) : (
-        <Logo />
+        // The tile names the phase; the logo already sits in the top bar.
+        <PhaseIcon phase={s.phase} />
       )}
     </span>
   );
@@ -305,6 +308,12 @@ export function RunHeader({
       </div>
     </div>
   );
+}
+
+function PhaseIcon({ phase }: { phase: State["phase"] }) {
+  if (phase === "idle") return <PlayIcon size={15} />;
+  if (phase === "flagged") return <FlagIcon size={15} weight="fill" />;
+  return <CheckIcon size={16} />;
 }
 
 const STEPS = ["Run scenario", "Flag source", "Repair", "Verify against clean run"];

@@ -1,5 +1,7 @@
 import { cn } from "cn";
 import { Suspense, lazy, useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { SidebarSimpleIcon } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Graph as GraphView } from "@/components/dashboard/Graph";
 import { ChromeStrip, ProgressStrip, RunHeader, type Times } from "@/components/dashboard/Header";
@@ -244,6 +246,13 @@ export default function App() {
                 Provenance
                 <div className="flex items-center gap-5">
                   <ProgressStrip s={s} />
+                  {!drawer && (s.phase === "flagged" || s.phase === "repaired") && (
+                    // Reopens the drawer's phase summary after it was closed.
+                    <Button size="sm" onClick={() => setDismissed(null)}>
+                      <SidebarSimpleIcon size={14} className="-scale-x-100" />
+                      {s.phase === "repaired" ? "Report" : "Blast radius"}
+                    </Button>
+                  )}
                   <ViewSwitch view={view} onView={setView} />
                 </div>
               </div>
