@@ -1,7 +1,6 @@
 import { cn } from "cn";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Footer } from "@/components/dashboard/Footer";
 import { Graph as GraphView } from "@/components/dashboard/Graph";
 import { ChromeStrip, RunHeader, type Times } from "@/components/dashboard/Header";
 import { LogStrip } from "@/components/dashboard/LogStrip";
@@ -188,7 +187,7 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <div className="grid h-svh grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-2.5 p-2.5 max-[1000px]:h-auto">
+      <div className="grid h-svh grid-rows-[auto_auto_minmax(0,1fr)] gap-2.5 p-2.5 max-[1000px]:h-auto">
         <ChromeStrip
           graphId={`demo-${sessionId()}`}
           repairId={s.report?.repair_id ?? null}
@@ -226,7 +225,6 @@ export default function App() {
           </section>
           <Inspector s={s} cypher={cypher} />
         </div>
-        <Footer />
         <Dialog open={showCypher} onOpenChange={setShowCypher}>
           <DialogContent title="Cypher kintsugi runs">
             <p className="mb-2 font-sans text-sm leading-[22px] text-muted">
