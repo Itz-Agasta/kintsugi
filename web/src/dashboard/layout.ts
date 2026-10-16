@@ -108,7 +108,8 @@ export function layout(
   for (const [x, list] of effects) {
     list.sort((a, b) => a.seq - b.seq);
     list.forEach(({ id }, i) =>
-      pos.set(id, { x, y: 6 * LANE_H + (i - (list.length - 1) / 2) * EFFECT_GAP }),
+      // The first two sit either side of the lane centre; more grow downward.
+      pos.set(id, { x, y: 6 * LANE_H + (i - 0.5) * EFFECT_GAP }),
     );
   }
 

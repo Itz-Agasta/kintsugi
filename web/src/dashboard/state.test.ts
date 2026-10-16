@@ -206,11 +206,27 @@ describe("reduce", () => {
     expect(reduce(initial, { type: "graph", graph })).toBe(initial);
   });
 
-  it("caps the log at 50, newest first", () => {
+  it("caps the log at 200, newest first", () => {
     let s = initial;
-    for (let i = 0; i < 60; i++) s = reduce(s, { type: "fail", message: `m${i}` });
-    expect(s.log).toHaveLength(50);
-    expect(s.log[0].text).toContain("m59");
+    for (let i = 0; i < 210; i++) s = reduce(s, { type: "fail", message: `m${i}` });
+    expect(s.log).toHaveLength(200);
+    expect(s.log[0].text).toContain("m209");
+  });
+
+  it("keeps the repair event on its log line", () => {
+    const ev = {
+      action_id: "a1",
+      tool: "triage",
+      ticket_id: "t01",
+      status: "rerun_changed" as const,
+      seq: 1,
+      must_rerun: true,
+      query_ms: 0.4,
+      start_ms: 3,
+      dur_ms: 9,
+    };
+    const s = run(flagged(), { type: "repair/start" }, { type: "repair/action", ev });
+    expect(s.log[0].ev).toEqual(ev);
   });
 
   it("reset", () => {

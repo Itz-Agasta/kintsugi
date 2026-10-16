@@ -15,7 +15,13 @@ import type {
 export type Phase = "idle" | "running" | "ran" | "flagged" | "repairing" | "repaired";
 export type UiStatus = Status | "pending" | "running";
 export type Tab = "overview" | "diff" | "drafts";
-export type LogLine = { t: string; text: string; gold?: boolean; error?: boolean };
+export type LogLine = {
+  t: string;
+  text: string;
+  gold?: boolean;
+  error?: boolean;
+  ev?: RepairEvent;
+};
 export type State = {
   phase: Phase;
   before: Phase;
@@ -66,9 +72,9 @@ export const initial: State = {
 
 export const clock = { now: () => new Date().toTimeString().slice(0, 8) };
 
-const LOG_MAX = 50;
+const LOG_MAX = 200;
 
-function log(s: State, text: string, mark: Pick<LogLine, "gold" | "error"> = {}): LogLine[] {
+function log(s: State, text: string, mark: Pick<LogLine, "gold" | "error" | "ev"> = {}): LogLine[] {
   return [{ t: clock.now(), text, ...mark }, ...s.log].slice(0, LOG_MAX);
 }
 
@@ -174,7 +180,7 @@ export function reduce(s: State, m: Msg): State {
         phase: "flagged",
         before: s.phase,
         blast: m.ids,
-        log: log(s, `flagged: ${m.ids.length} actions depend on the source`),
+        log: log(s, `BlastRadius returned ${m.ids.length} actions`),
       };
     case "repair/start": {
       const overrides: Record<string, UiStatus> = {};
@@ -215,6 +221,7 @@ export function reduce(s: State, m: Msg): State {
         front,
         log: log(s, `${ev.tool} ${ev.ticket_id} ${WORDS[ev.status]}`, {
           gold: ev.status === "rerun_changed" || ev.status === "new",
+          ev,
         }),
       };
     }

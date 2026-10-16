@@ -17,6 +17,13 @@ export type RepairEvent = {
   ticket_id: string;
   status: Status;
   seq: number;
+  // Set for actions the MustRerun query decided: its answer and FalkorDB's own
+  // execution time for it.
+  must_rerun?: boolean;
+  query_ms?: number;
+  // When the decision began, from the start of the repair, and how long it took.
+  start_ms?: number;
+  dur_ms?: number;
 };
 export type CompItem = {
   effect_id: string;

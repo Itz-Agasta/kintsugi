@@ -52,7 +52,8 @@ function stretch(y: number, k: number): number {
   return lane * k + (y - lane);
 }
 
-const GUTTER = 120; // room for the lane labels on the left
+const GUTTER = 120;
+const STACK_ROOM = 64; // layout units below the effects lane for stacked effects // room for the lane labels on the left
 const PILL = 120; // widest pill, so edge columns are not cut off
 
 // frame picks a zoom that fits every column (never below 0.75, so pills stay
@@ -65,11 +66,22 @@ function frame(
   const x1 = Math.min(...xs) - PILL / 2;
   const span = Math.max(...xs) + PILL / 2 - x1;
   const zoom = Math.max(0.75, Math.min((w - GUTTER - 24) / span, 1.2));
-  const k = Math.max(0.5, Math.min(h / (zoom * LANES.length * LANE_H), 2.5));
+  // Effects stack below their lane's centre (up to four for one ticket), and
+  // that stack is not stretched, so the height budget keeps room for it.
+  const k = Math.max(0.5, Math.min((h - STACK_ROOM * zoom) / (zoom * LANES.length * LANE_H), 2.5));
   return { zoom, k, pan: { x: GUTTER - x1 * zoom, y: (LANE_H * k * zoom) / 2 } };
 }
 
-export function Graph({ s, onSelect }: { s: State; onSelect: (id: string | null) => void }) {
+export function Graph({
+  s,
+  onSelect,
+  inset = 0,
+}: {
+  s: State;
+  onSelect: (id: string | null) => void;
+  // Width covered on the right by the open drawer, kept clear when framing.
+  inset?: number;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const [ready, setReady] = useState(false);
@@ -91,11 +103,11 @@ export function Graph({ s, onSelect }: { s: State; onSelect: (id: string | null)
       pos.size && size.h
         ? frame(
             [...[...pos.values()].map((p) => p.x), ...(kept?.count ? [kept.x] : [])],
-            size.w,
+            size.w - inset,
             size.h,
           )
         : null,
-    [pos, kept, size],
+    [pos, kept, size, inset],
   );
   const k = framing?.k ?? 1;
 
@@ -235,12 +247,12 @@ export function Graph({ s, onSelect }: { s: State; onSelect: (id: string | null)
 
     // Refit when the phase or the canvas size changes, and while the run adds
     // nodes. In between, the viewer's own pan and zoom are left alone.
-    const key = `${s.phase}-${s.blast.length}-${size.w}x${size.h}-${s.phase === "running" ? pos.size : 0}`;
+    const key = `${s.phase}-${s.blast.length}-${size.w - inset}x${size.h}-${s.phase === "running" ? pos.size : 0}`;
     if (key !== fitKey.current && framing) {
       fitKey.current = key;
       cy.viewport({ zoom: framing.zoom, pan: framing.pan });
     }
-  }, [s, pos, flagged, ready, size, k, framing]);
+  }, [s, pos, flagged, ready, size, k, framing, inset]);
 
   // Lane bands, the kept column and the repair front are HTML over the canvas.
   const toY = (y: number) => y * view.zoom + view.y;
@@ -253,7 +265,7 @@ export function Graph({ s, onSelect }: { s: State; onSelect: (id: string | null)
   }, [s.front, s.graph, pos]);
 
   return (
-    <div className="relative min-h-[300px] flex-1 overflow-hidden bg-canvas max-[1000px]:min-h-[560px]">
+    <div className="absolute inset-0 overflow-hidden bg-canvas">
       {LANES.map((name, i) => {
         const I = ICONS[LANE_ICON[i]];
         return (

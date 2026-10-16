@@ -7,10 +7,11 @@ import {
   MagnifyingGlassIcon,
   ReceiptIcon,
   ShieldCheckIcon,
+  SidebarSimpleIcon,
   type Icon,
 } from "@phosphor-icons/react";
 import { cn } from "cn";
-import { statusOf, type State } from "@/dashboard/state";
+import { statusOf, type State, type UiStatus } from "@/dashboard/state";
 import { groups, poisonedKey, type TicketGroup } from "@/dashboard/tickets";
 import { Chip } from "./Chip";
 
@@ -92,7 +93,89 @@ function Group({
   );
 }
 
-export function SpanTree({ s, onSelect }: { s: State; onSelect: (id: string) => void }) {
+// A small square per outcome, the same marks as the progress strip.
+const DOT: Partial<Record<UiStatus, string>> = {
+  poisoned: "border-text bg-text",
+  rerun_changed: "border-gold bg-gold",
+  rerun_same: "border-muted bg-muted",
+  skipped: "border-muted",
+  superseded: "border-faint border-dashed",
+  running: "border-gold shadow-[0_0_0_2px_var(--gold-line)]",
+  pending: "border-faint border-dashed",
+};
+
+// Rail is the folded ticket list: one chip per ticket, its outcome as a square.
+function Rail({
+  s,
+  onSelect,
+  onToggle,
+}: {
+  s: State;
+  onSelect: (id: string) => void;
+  onToggle: () => void;
+}) {
+  const { shown, kept } = groups(s);
+  const selTicket = s.graph.nodes.find((n) => n.id === s.selected)?.props.ticket_id ?? null;
+  return (
+    <section className="flex w-[68px] shrink-0 flex-col overflow-hidden rounded-lg border border-rule bg-panel max-[1000px]:hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label="Show ticket list"
+        title="Tickets  ["
+        className="grid h-11 shrink-0 place-items-center border-b border-rule text-faint hover:text-text"
+      >
+        <SidebarSimpleIcon size={17} />
+      </button>
+      <div className="min-h-0 flex-1 overflow-auto py-1.5">
+        {shown.map((g) => {
+          const pick = g.actions.find((a) => a.props.tool === "triage") ?? g.actions[0];
+          return (
+            <button
+              key={g.id}
+              type="button"
+              onClick={() => pick && onSelect(pick.id)}
+              title={g.id ? `${g.id}  ${g.decision}` : "Sources"}
+              className={cn(
+                "mx-1.5 flex h-8 w-[calc(100%-12px)] items-center justify-center gap-1.5 rounded-md font-mono text-xs text-muted hover:bg-raised hover:text-text",
+                (selTicket ?? "") === g.id && s.selected && "bg-raised text-text",
+              )}
+            >
+              <span
+                className={cn(
+                  "size-2 shrink-0 rounded-[2px] border transition-colors duration-150",
+                  (g.outcome && DOT[g.outcome]) || "border-line",
+                )}
+              />
+              {g.id || "src"}
+            </button>
+          );
+        })}
+        {kept > 0 && (
+          <div
+            title={`${kept} tickets kept`}
+            className="mx-1.5 mt-1.5 flex h-8 items-center justify-center gap-1 rounded-md border border-dashed border-line font-mono text-xs text-faint"
+          >
+            <ShieldCheckIcon size={13} />
+            {kept}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function SpanTree({
+  s,
+  onSelect,
+  rail,
+  onToggle,
+}: {
+  s: State;
+  onSelect: (id: string) => void;
+  rail: boolean;
+  onToggle: () => void;
+}) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const { shown, total, kept } = groups(s);
   const selTicket = s.graph.nodes.find((n) => n.id === s.selected)?.props.ticket_id as
@@ -107,15 +190,26 @@ export function SpanTree({ s, onSelect }: { s: State; onSelect: (id: string) => 
       return n;
     });
   const shownTickets = shown.filter((g) => g.id).length;
+  if (rail) return <Rail s={s} onSelect={onSelect} onToggle={onToggle} />;
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-rule bg-panel">
-      <div className="flex h-11 items-center justify-between border-b border-rule px-3.5 font-sans font-medium">
+    <section className="flex w-[320px] shrink-0 flex-col overflow-hidden rounded-lg border border-rule bg-panel max-[1000px]:w-auto">
+      <div className="flex h-11 items-center gap-2 border-b border-rule pr-2 pl-3.5 font-sans font-medium">
         Affected tickets
         {total > 0 && (
           <small className="text-[12.5px] font-normal text-faint">
             {shownTickets} of {total}
           </small>
         )}
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label="Fold ticket list"
+          title="Fold  ["
+          className="grid size-7 place-items-center rounded-md text-faint hover:bg-raised hover:text-text"
+        >
+          <SidebarSimpleIcon size={16} />
+        </button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-1.5">
         {s.phase === "idle" && (

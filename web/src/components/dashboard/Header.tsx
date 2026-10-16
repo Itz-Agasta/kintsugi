@@ -203,115 +203,76 @@ export function RunHeader({
   const primary = PRIMARY[s.phase];
   const spinning = busy(s);
   const repairing = s.phase === "repairing";
-  return (
-    <div className="rounded-[10px] border border-rule bg-panel">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-7 px-[22px] py-[18px] max-[1000px]:grid-cols-1">
-        <div className="min-w-0">
-          <div className="flex items-center gap-3">
-            <span
-              className={cn(
-                "grid size-7 shrink-0 place-items-center rounded-[7px] border",
-                repairing
-                  ? "border-gold-line bg-gold-tint text-gold"
-                  : "border-line bg-raised text-muted",
-              )}
-            >
-              {spinning ? (
-                <CircleNotchIcon size={16} className="animate-spin motion-reduce:animate-none" />
-              ) : s.phase === "repaired" ? (
-                <CheckIcon size={16} />
-              ) : (
-                <Logo />
-              )}
-            </span>
-            <h1 className="truncate font-sans text-[22px] leading-7 font-medium tracking-[-0.015em]">
+  // Once a run starts the header folds to one row, so the stage gets the height.
+  const compact = s.phase !== "idle";
+  const tile = (
+    <span
+      className={cn(
+        "grid shrink-0 place-items-center rounded-[7px] border",
+        compact ? "size-8" : "size-7",
+        repairing ? "border-gold-line bg-gold-tint text-gold" : "border-line bg-raised text-muted",
+      )}
+    >
+      {spinning ? (
+        <CircleNotchIcon size={16} className="animate-spin motion-reduce:animate-none" />
+      ) : s.phase === "repaired" ? (
+        <CheckIcon size={16} />
+      ) : (
+        <Logo />
+      )}
+    </span>
+  );
+  const button = primary ? (
+    <Button
+      size={compact ? "default" : "lg"}
+      variant={s.phase === "flagged" || repairing ? "repair" : "primary"}
+      disabled={spinning}
+      onClick={onPrimary}
+      className={compact ? "h-9 px-3.5" : undefined}
+    >
+      <primary.icon
+        size={16}
+        className={spinning ? "animate-spin motion-reduce:animate-none" : undefined}
+      />
+      {primary.label}
+    </Button>
+  ) : null;
+
+  if (compact) {
+    return (
+      <div className="flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2 rounded-[10px] border border-rule bg-panel px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-3">
+          {tile}
+          <div className="min-w-0">
+            <h1 className="truncate font-sans text-[17px] leading-[22px] font-medium tracking-[-0.01em]">
               {TITLES[s.phase]}
             </h1>
-          </div>
-          <div className="mt-[7px] ml-10 flex flex-wrap gap-5 font-sans text-[13px] text-muted">
-            <Meta s={s} times={times} now={now} />
+            <div className="flex gap-4 font-sans text-xs leading-[18px] text-muted">
+              <Meta s={s} times={times} now={now} />
+            </div>
           </div>
         </div>
+        <StepDots s={s} />
+        <div className="flex-1" />
         <div className="flex">
           {stats(s).map((st) => {
             const I = STAT_ICONS[st.label];
             return (
-              <div key={st.label} className="border-l border-rule px-[22px] py-0.5">
-                <div className="flex items-center gap-1.5 font-sans text-[12.5px] text-muted">
-                  {I && <I size={14} />}
+              <div key={st.label} className="border-l border-rule px-4">
+                <div className="flex items-center gap-1.5 font-sans text-[11.5px] leading-4 text-muted">
+                  {I && <I size={12} />}
                   {st.label}
                 </div>
-                <div
-                  className={cn(
-                    "mt-0.5 font-mono text-[30px] leading-[34px]",
-                    st.gold && "text-gold",
-                  )}
-                >
+                <div className={cn("font-mono text-[22px] leading-7", st.gold && "text-gold")}>
                   {st.value}
                 </div>
               </div>
             );
           })}
         </div>
-        {primary ? (
-          <Button
-            size="lg"
-            variant={s.phase === "flagged" || repairing ? "repair" : "primary"}
-            disabled={spinning}
-            onClick={onPrimary}
-          >
-            <primary.icon
-              size={16}
-              className={spinning ? "animate-spin motion-reduce:animate-none" : undefined}
-            />
-            {primary.label}
-          </Button>
-        ) : (
-          <span />
-        )}
-      </div>
-      <StepTrack s={s} onTab={onTab} />
-    </div>
-  );
-}
-
-const STEPS = ["Run scenario", "Flag source", "Repair", "Verify against clean run"];
-
-function StepTrack({ s, onTab }: { s: State; onTab: (t: Tab) => void }) {
-  const cur = step(s);
-  const allDone = s.phase === "repaired";
-  return (
-    <div className="flex items-stretch border-t border-rule px-[22px] max-[1000px]:flex-wrap">
-      {STEPS.map((label, i) => {
-        const n = i + 1;
-        const done = n < cur || allDone;
-        const now = n === cur && !allDone;
-        return (
-          <span
-            key={label}
-            className={cn(
-              "relative mr-[22px] flex items-center gap-2 py-[11px] pr-[26px] font-sans text-[13px]",
-              done ? "text-muted" : now ? "text-text" : "text-faint",
-              now &&
-                "after:absolute after:right-[26px] after:-bottom-px after:left-0 after:h-0.5 after:bg-gold",
-            )}
-          >
-            <span
-              className={cn(
-                "grid size-5 place-items-center rounded-full border font-mono text-[11px]",
-                done ? "border-muted bg-raised" : now ? "border-gold text-gold" : "border-line",
-              )}
-            >
-              {done ? <CheckIcon size={11} /> : n}
-            </span>
-            {label}
-          </span>
-        );
-      })}
-      <div className="ml-auto flex items-center">
         {s.phase === "repaired" ? (
-          <Tabs value={s.tab} onValueChange={(v) => onTab(v as Tab)} className="h-full">
-            <TabsList>
+          <Tabs value={s.tab} onValueChange={(v) => onTab(v as Tab)}>
+            <TabsList className="h-9">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="diff">Diff</TabsTrigger>
               <TabsTrigger value="drafts">Drafts</TabsTrigger>
@@ -320,7 +281,76 @@ function StepTrack({ s, onTab }: { s: State; onTab: (t: Tab) => void }) {
         ) : (
           <ProgressStrip s={s} />
         )}
+        {button}
       </div>
+    );
+  }
+
+  return (
+    <div className="rounded-[10px] border border-rule bg-panel">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-7 px-[22px] py-[18px]">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3">
+            {tile}
+            <h1 className="truncate font-sans text-[22px] leading-7 font-medium tracking-[-0.015em]">
+              {TITLES[s.phase]}
+            </h1>
+          </div>
+          <div className="mt-[7px] ml-10 flex flex-wrap gap-5 font-sans text-[13px] text-muted">
+            <Meta s={s} times={times} now={now} />
+          </div>
+        </div>
+        {button}
+      </div>
+      <div className="flex items-center border-t border-rule px-[22px] py-[11px]">
+        <StepDots s={s} labels />
+      </div>
+    </div>
+  );
+}
+
+const STEPS = ["Run scenario", "Flag source", "Repair", "Verify against clean run"];
+
+// StepDots is the four-step track. Compact, only the current step is named.
+function StepDots({ s, labels }: { s: State; labels?: boolean }) {
+  const cur = step(s);
+  const allDone = s.phase === "repaired";
+  return (
+    <div className="flex items-center">
+      {STEPS.map((label, i) => {
+        const n = i + 1;
+        const done = n < cur || allDone;
+        const now = n === cur && !allDone;
+        return (
+          <span key={label} className="flex items-center" title={label}>
+            {i > 0 && (
+              <span className={cn("mx-2 h-px w-5", done || now ? "bg-muted" : "bg-line")} />
+            )}
+            <span
+              className={cn(
+                "grid size-5 place-items-center rounded-full border font-mono text-[11px]",
+                done
+                  ? "border-muted bg-raised text-muted"
+                  : now
+                    ? "border-gold text-gold"
+                    : "border-line text-faint",
+              )}
+            >
+              {done ? <CheckIcon size={11} /> : n}
+            </span>
+            {(labels || now) && (
+              <span
+                className={cn(
+                  "ml-2 font-sans text-[13px]",
+                  now ? "text-text" : done ? "text-muted" : "text-faint",
+                )}
+              >
+                {label}
+              </span>
+            )}
+          </span>
+        );
+      })}
     </div>
   );
 }

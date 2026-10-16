@@ -1,9 +1,10 @@
 import { cn } from "cn";
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Graph as GraphView } from "@/components/dashboard/Graph";
 import { ChromeStrip, RunHeader, type Times } from "@/components/dashboard/Header";
-import { LogStrip } from "@/components/dashboard/LogStrip";
+import { Dock } from "@/components/dashboard/Dock";
+import { ViewSwitch } from "@/components/dashboard/ViewSwitch";
 import { DiffView } from "@/components/dashboard/DiffView";
 import { DraftsView } from "@/components/dashboard/DraftsView";
 import { Inspector } from "@/components/dashboard/Inspector";
@@ -21,6 +22,11 @@ import {
   type RunEvent,
 } from "@/lib/types";
 import { busy, clock, initial, reduce } from "./state";
+
+// Three.js is large; it loads the first time the 3D view is opened.
+const Stack3D = lazy(() =>
+  import("@/components/dashboard/Stack3D").then((m) => ({ default: m.Stack3D })),
+);
 
 const NO_TIMES: Times = { flagged: null, started: null, ended: null };
 
@@ -168,18 +174,35 @@ export default function App() {
   };
   const [showCypher, setShowCypher] = useState(false);
   const tab = s.phase === "repaired" ? s.tab : "overview";
+  const [rail, setRail] = useState(true);
+  const [view, setView] = useState<"2d" | "3d">("2d");
+  // The drawer opens on a selection, and on its own when flagged or repaired
+  // until the viewer closes it for that phase.
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const drawer =
+    s.selected !== null ||
+    ((s.phase === "flagged" || s.phase === "repaired") && dismissed !== s.phase);
 
-  const resetRef = useRef(reset);
+  // Keys: R reset, [ ticket rail, 2 and 3 the graph view, Esc closes the drawer.
+  const keys = useRef<Record<string, () => void>>({});
   useEffect(() => {
-    resetRef.current = reset;
+    keys.current = {
+      r: reset,
+      "[": () => setRail((r) => !r),
+      "2": () => setView("2d"),
+      "3": () => setView("3d"),
+      Escape: () => {
+        select(null);
+        setDismissed(s.phase);
+      },
+    };
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "r" && e.key !== "R") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
-      resetRef.current();
+      keys.current[e.key.length === 1 ? e.key.toLowerCase() : e.key]?.();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -208,22 +231,36 @@ export default function App() {
         {/* Hidden rather than unmounted on the other tabs, so the graph keeps its canvas. */}
         <div
           className={cn(
-            "grid min-h-0 grid-cols-[340px_minmax(0,1fr)_360px] gap-2.5 max-[1000px]:grid-cols-1",
+            "flex min-h-0 gap-2.5 max-[1000px]:flex-col",
             tab !== "overview" && "hidden",
           )}
         >
-          <SpanTree s={s} onSelect={select} />
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-rule bg-panel">
-            <div className="flex h-11 items-center justify-between border-b border-rule px-3.5 font-sans font-medium">
+          <SpanTree s={s} onSelect={select} rail={rail} onToggle={() => setRail((r) => !r)} />
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-panel max-[1000px]:min-h-[640px]">
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-rule px-3.5 font-sans font-medium">
               Provenance
-              <small className="text-[12.5px] font-normal text-faint">
-                what each action read, and who it handed off to
-              </small>
+              <ViewSwitch view={view} onView={setView} />
             </div>
-            <GraphView s={s} onSelect={select} />
-            <LogStrip log={s.log} />
+            <div className="relative min-h-0 flex-1">
+              {view === "3d" ? (
+                <Suspense fallback={<div className="absolute inset-0 bg-canvas" />}>
+                  <Stack3D s={s} onSelect={select} inset={drawer ? 396 : 0} />
+                </Suspense>
+              ) : (
+                <GraphView s={s} onSelect={select} inset={drawer ? 396 : 0} />
+              )}
+              <Inspector
+                s={s}
+                cypher={cypher}
+                open={drawer}
+                onClose={() => {
+                  select(null);
+                  setDismissed(s.phase);
+                }}
+              />
+            </div>
+            <Dock s={s} onSelect={select} />
           </section>
-          <Inspector s={s} cypher={cypher} />
         </div>
         <Dialog open={showCypher} onOpenChange={setShowCypher}>
           <DialogContent title="Cypher kintsugi runs">
