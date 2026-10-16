@@ -39,12 +39,7 @@ const graph: Graph = {
 
 const run = (s: State, ...ms: Msg[]) => ms.reduce(reduce, s);
 const flagged = () =>
-  run(
-    initial,
-    { type: "graph", graph },
-    { type: "run/done" },
-    { type: "blast", ids: ["a3", "a1", "a2"] },
-  );
+  run(initial, { type: "restore", graph }, { type: "blast", ids: ["a3", "a1", "a2"] });
 
 const report: Report = {
   repair_id: "r1",
@@ -125,8 +120,7 @@ describe("reduce", () => {
     const g2: Graph = { nodes: [...graph.nodes, act("a9", 9)], edges: [] };
     let s = run(
       initial,
-      { type: "graph", graph: g2 },
-      { type: "run/done" },
+      { type: "restore", graph: g2 },
       { type: "blast", ids: ["a1", "a2", "a9"] },
     );
     s = run(
@@ -203,6 +197,15 @@ describe("reduce", () => {
     expect(s.report).toBeNull();
   });
 
+  it("ignores a late restore once a run has started", () => {
+    const s = reduce(initial, { type: "run/start" });
+    expect(reduce(s, { type: "restore", graph })).toBe(s);
+  });
+
+  it("ignores a late graph fetch after a reset", () => {
+    expect(reduce(initial, { type: "graph", graph })).toBe(initial);
+  });
+
   it("caps the log at 50, newest first", () => {
     let s = initial;
     for (let i = 0; i < 60; i++) s = reduce(s, { type: "fail", message: `m${i}` });
@@ -237,7 +240,7 @@ describe("derived", () => {
 
   it("stats per phase", () => {
     expect(stats(initial)).toEqual([]);
-    const ran = run(initial, { type: "graph", graph }, { type: "run/done" });
+    const ran = run(initial, { type: "restore", graph });
     expect(stats(ran)).toEqual([
       { label: "Actions", value: 4 },
       { label: "Facts", value: 1 },

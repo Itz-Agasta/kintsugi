@@ -15,11 +15,14 @@ export function outcome(tool: string, output: unknown): string {
   if (tool === "triage") {
     if (o.choice === "refund") return o.level === "partial" ? "Partial refund" : "Full refund";
     if (o.choice === "reply") return "Reply";
+    if (o.choice === "escalate") return "Escalate";
     return o.choice ?? String(output);
   }
   if (tool === "refund") return `Refund $${o.amount ?? 0}`;
   if (tool === "notifier") {
-    return o.template === "reply" ? "Reply email" : `Refund email, $${o.amount ?? 0}`;
+    if (o.template === "reply") return "Reply email";
+    if (o.template === "escalate") return "Escalation email";
+    return `Refund email, $${o.amount ?? 0}`;
   }
   return String(output);
 }

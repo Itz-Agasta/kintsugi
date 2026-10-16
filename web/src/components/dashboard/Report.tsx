@@ -69,7 +69,11 @@ export function Report({ s }: { s: State }) {
                   {c.kind === "refund" ? `Refund $${c.amount}` : "Email"}{" "}
                   <span className="font-mono text-muted">{c.ticket_id}</span>
                 </span>
-                <span className="font-sans text-xs text-gold">Draft, not sent</span>
+                {c.draft ? (
+                  <span className="font-sans text-xs text-gold">Draft, not sent</span>
+                ) : (
+                  <span className="font-sans text-xs text-muted">Draft failed</span>
+                )}
               </div>
             );
           })}

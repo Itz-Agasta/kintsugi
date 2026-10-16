@@ -30,6 +30,10 @@ describe("outcome", () => {
       "Refund email, $90",
     );
     expect(outcome("triage", "not json")).toBe("not json");
+    expect(outcome("triage", '{"choice":"escalate","level":"none"}')).toBe("Escalate");
+    expect(outcome("notifier", '{"amount":0,"level":"none","template":"escalate"}')).toBe(
+      "Escalation email",
+    );
   });
 });
 

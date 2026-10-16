@@ -138,6 +138,9 @@ export function reduce(s: State, m: Msg): State {
     case "run/done":
       return { ...s, phase: "ran", log: log(s, `run done: ${actions(s).length} actions recorded`) };
     case "graph": {
+      // Graph fetches only happen during or after a run; one landing after a
+      // reset is stale.
+      if (s.phase === "idle") return s;
       // While running, keep actions the stream added that the fetch missed.
       const ids = new Set(m.graph.nodes.map((n) => n.id));
       const kept =
@@ -151,6 +154,8 @@ export function reduce(s: State, m: Msg): State {
       };
     }
     case "restore": {
+      // The mount-time fetch can land after the viewer already pressed Run.
+      if (s.phase !== "idle") return s;
       const acts = m.graph.nodes.filter((n) => n.label === "Action");
       if (acts.length === 0) return initial;
       const touched = acts.filter((n) => (n.props.status ?? "ok") !== "ok");
