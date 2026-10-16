@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/Itz-Agasta/kintsugi/internal/agents"
@@ -439,5 +440,24 @@ func TestEventsCarryDecisionAndTiming(t *testing.T) {
 			t.Errorf("%s %s: start %v dur %v after start %v", e.Status, e.ActionID, e.StartMs, e.DurMs, last)
 		}
 		last = e.StartMs
+	}
+}
+
+// A slow event callback (the server paces its stream there) is not repair
+// time: starts stay well under the time spent sleeping in it.
+func TestEventTimingSkipsCallback(t *testing.T) {
+	demo := build(t, true)
+	var events []repair.Event
+	pause := 20 * time.Millisecond
+	slow := func(e repair.Event) {
+		events = append(events, e)
+		time.Sleep(pause)
+	}
+	if _, err := repair.Run(context.Background(), demo, scenario.PoisonSource, fakeAgents(), model.FakeDrafter{}, slow); err != nil {
+		t.Fatal(err)
+	}
+	last := events[len(events)-1]
+	if slept := float64(len(events)-1) * float64(pause.Milliseconds()); last.StartMs >= slept {
+		t.Errorf("last start %.1fms, want under the %.0fms spent in the callback", last.StartMs, slept)
 	}
 }

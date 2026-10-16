@@ -391,11 +391,15 @@ func (e *engine) event(a recorder.ActionRef, status string, d decision) {
 		return
 	}
 	ms := func(t time.Duration) float64 { return float64(t.Microseconds()) / 1000 }
+	sent := time.Now()
 	e.onEvent(Event{
 		ActionID: a.ID, Tool: a.Tool, TicketID: a.TicketID, Status: status, Seq: a.Seq,
 		MustRerun: d.must, QueryMs: d.ms,
-		StartMs: ms(d.start.Sub(e.t0)), DurMs: ms(time.Since(d.start)),
+		StartMs: ms(d.start.Sub(e.t0)), DurMs: ms(sent.Sub(d.start)),
 	})
+	// Time spent in the callback (the server paces its stream there) is not
+	// repair work, so the clock skips it.
+	e.t0 = e.t0.Add(time.Since(sent))
 }
 
 // emit sends an event for a row shaped (id, tool, ticket_id, seq).
