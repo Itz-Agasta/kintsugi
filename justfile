@@ -11,6 +11,7 @@ check:
     test -z "$(gofmt -l .)" || (gofmt -l . && echo 'run gofmt -w .' && exit 1)
     go vet ./...
     go build ./...
+    cd web && pnpm exec vp check
 
 test:
     go test ./...
@@ -32,3 +33,10 @@ demo:
 
 serve:
     go run ./cmd/kintsugi serve
+
+# Dashboard dev server on :5173. Run `just serve` alongside it.
+web:
+    cd web && pnpm exec vp dev
+
+web-test:
+    cd web && pnpm exec vp test

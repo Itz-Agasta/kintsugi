@@ -1,0 +1,133 @@
+@import "tailwindcss";
+@import "shadcn/tailwind.css";
+@import "@fontsource/fragment-mono/400.css";
+@import "@fontsource/host-grotesk/400.css";
+@import "@fontsource/host-grotesk/500.css";
+
+/* Studio graphite: violet-black surfaces, one amber accent that means repaired. */
+:root {
+  --bg: #0f0e12;
+  --canvas: #131217;
+  --panel: #18171c;
+  --raised: #222127;
+  --hover: #2a2930;
+  --line: #33323a;
+  --rule: #25242a;
+  --text: #e5e5e5;
+  --muted: #b2b2b2;
+  --faint: #6e6d75;
+  --gold: #f5a623;
+  --gold-ink: #1a1205;
+  --gold-tint: rgb(245 166 35 / 0.09);
+  --gold-line: rgb(245 166 35 / 0.4);
+
+  --mono: "Fragment Mono", ui-monospace, monospace;
+  --sans: "Host Grotesk", ui-sans-serif, system-ui, sans-serif;
+
+  /* shadcn variables, mapped onto the tokens above. */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--panel);
+  --card-foreground: var(--text);
+  --popover: var(--raised);
+  --popover-foreground: var(--text);
+  --primary: var(--text);
+  --primary-foreground: var(--bg);
+  --secondary: var(--raised);
+  --secondary-foreground: var(--text);
+  --muted-foreground: var(--muted);
+  --accent: var(--raised);
+  --accent-foreground: var(--text);
+  --destructive: var(--text);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--muted);
+  --radius: 6px;
+}
+
+@theme inline {
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+  --color-bg: var(--bg);
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-rule: var(--rule);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-gold: var(--gold);
+  --color-gold-ink: var(--gold-ink);
+  --color-gold-tint: var(--gold-tint);
+  --color-gold-line: var(--gold-line);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  :focus-visible {
+    outline: 1px solid var(--muted);
+    outline-offset: 1px;
+  }
+  html,
+  body {
+    background: var(--bg);
+    color: var(--text);
+  }
+  body {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  button {
+    font: inherit;
+  }
+  /* Cypher must read as typed: no arrow ligatures for -> and <-. */
+  pre,
+  code {
+    font-variant-ligatures: none;
+    font-feature-settings:
+      "liga" 0,
+      "calt" 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+}

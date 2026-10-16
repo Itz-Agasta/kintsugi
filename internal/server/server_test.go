@@ -415,3 +415,60 @@ func TestResetReportsDeleteFailure(t *testing.T) {
 		t.Errorf("reset with an unreachable database: HTTP %d, want 500", resp.StatusCode)
 	}
 }
+
+func TestActionDetail(t *testing.T) {
+	_, ts := started(t, nil)
+	sid := randID()
+	src := "&source=partner-blog/policy-update"
+	stream(t, ts.URL+"/api/run/stream?session="+sid)
+	stream(t, ts.URL+"/api/repair/stream?session="+sid+src)
+
+	var g struct {
+		Nodes []struct {
+			ID    string         `json:"id"`
+			Props map[string]any `json:"props"`
+		} `json:"nodes"`
+	}
+	getJSON(t, ts.URL+"/api/graph?session="+sid, &g)
+	var triage string
+	for _, n := range g.Nodes {
+		if n.Props["tool"] == "triage" && n.Props["ticket_id"] == "t05" && n.Props["status"] != "superseded" {
+			triage = n.ID
+		}
+	}
+
+	var d struct {
+		Action   map[string]any   `json:"action"`
+		Reads    []map[string]any `json:"reads"`
+		Writes   []map[string]any `json:"writes"`
+		Handoffs []map[string]any `json:"handoffs"`
+		Effects  []map[string]any `json:"effects"`
+		Reran    *struct {
+			OldOutput string `json:"old_output"`
+			OldHash   string `json:"old_hash"`
+			NewHash   string `json:"new_hash"`
+		} `json:"reran"`
+	}
+	if code := getJSON(t, ts.URL+"/api/action?session="+sid+"&id="+triage, &d); code != 200 {
+		t.Fatalf("action %q: HTTP %d, want 200", triage, code)
+	}
+	if d.Action["status"] != "rerun_changed" {
+		t.Errorf("status = %v, want rerun_changed", d.Action["status"])
+	}
+	read := false
+	for _, f := range d.Reads {
+		read = read || f["key"] == "vip_rules"
+	}
+	if !read {
+		t.Errorf("reads = %v, want vip_rules among them", d.Reads)
+	}
+	if len(d.Handoffs) == 0 {
+		t.Error("no handoffs")
+	}
+	if d.Reran == nil || d.Reran.OldHash == d.Reran.NewHash {
+		t.Errorf("reran = %+v, want a changed hash", d.Reran)
+	}
+	if code := getJSON(t, ts.URL+"/api/action?session="+sid+"&id=nope", nil); code != 404 {
+		t.Errorf("unknown action: HTTP %d, want 404", code)
+	}
+}

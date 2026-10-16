@@ -65,6 +65,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/graph", s.withSession(false, s.graph))
 	mux.HandleFunc("GET /api/blast", s.withSession(false, s.blast))
 	mux.HandleFunc("GET /api/path", s.withSession(false, s.path))
+	mux.HandleFunc("GET /api/action", s.withSession(false, s.action))
 	mux.HandleFunc("GET /api/repair/stream", s.withSession(true, s.repairStream))
 	mux.HandleFunc("POST /api/reset", s.withSession(true, s.reset))
 	return s.cors(mux)
@@ -250,6 +251,7 @@ func (s *Server) cypher(w http.ResponseWriter, r *http.Request) {
 		"Supersede":     store.Supersede,
 		"Compensation":  store.Compensation,
 		"ExplainPath":   store.ExplainPath,
+		"ActionDetail":  store.ActionDetail,
 		"DiffFacts":     store.DiffFacts,
 		"DiffDecisions": store.DiffDecisions,
 		"DiffEffects":   store.DiffEffects,
@@ -350,6 +352,45 @@ func (s *Server) path(w http.ResponseWriter, r *http.Request, g *falkordb.Graph)
 		out.Edges = append(out.Edges, graphEdge{From: e[0].(string), Type: e[1].(string), To: e[2].(string)})
 	}
 	writeJSON(w, out)
+}
+
+// action returns one action with its reads, writes, handoffs, effects and,
+// when a repair re-ran it, the old output from the RERAN edge.
+func (s *Server) action(w http.ResponseWriter, r *http.Request, g *falkordb.Graph) {
+	res, err := rows(g, store.ActionDetail, map[string]any{"id": r.URL.Query().Get("id")})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(res) == 0 {
+		http.Error(w, "unknown action", http.StatusNotFound)
+		return
+	}
+	row := res[0]
+	props := row[0].(map[string]any)
+	delete(props, "payload")
+	list := func(v any) []any {
+		out := []any{}
+		for _, x := range v.([]any) {
+			if m, ok := x.(map[string]any); ok {
+				delete(m, "payload")
+			}
+			out = append(out, x)
+		}
+		return out
+	}
+	var reran any
+	if rr := row[5].([]any); len(rr) > 0 {
+		reran = rr[0]
+	}
+	writeJSON(w, map[string]any{
+		"action":   props,
+		"reads":    list(row[1]),
+		"writes":   list(row[2]),
+		"handoffs": list(row[3]),
+		"effects":  list(row[4]),
+		"reran":    reran,
+	})
 }
 
 // repairStream repairs the visitor graph, sending each decided action, then
