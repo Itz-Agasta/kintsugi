@@ -2,7 +2,7 @@ import { cn } from "cn";
 import { Suspense, lazy, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Graph as GraphView } from "@/components/dashboard/Graph";
-import { ChromeStrip, RunHeader, type Times } from "@/components/dashboard/Header";
+import { ChromeStrip, ProgressStrip, RunHeader, type Times } from "@/components/dashboard/Header";
 import { Dock } from "@/components/dashboard/Dock";
 import { ViewSwitch } from "@/components/dashboard/ViewSwitch";
 import { DiffView } from "@/components/dashboard/DiffView";
@@ -174,7 +174,7 @@ export default function App() {
   };
   const [showCypher, setShowCypher] = useState(false);
   const tab = s.phase === "repaired" ? s.tab : "overview";
-  const [rail, setRail] = useState(true);
+  const [rail, setRail] = useState(false);
   const [view, setView] = useState<"2d" | "3d">("2d");
   // The drawer opens on a selection, and on its own when flagged or repaired
   // until the viewer closes it for that phase.
@@ -210,7 +210,7 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <div className="grid h-svh grid-rows-[auto_auto_minmax(0,1fr)] gap-2.5 p-2.5 max-[1000px]:h-auto">
+      <div className="grid h-svh grid-rows-[auto_minmax(0,1fr)] gap-2.5 p-2.5 max-[1000px]:h-auto">
         <ChromeStrip
           graphId={`demo-${sessionId()}`}
           repairId={s.report?.repair_id ?? null}
@@ -219,48 +219,55 @@ export default function App() {
           onReset={reset}
           resetDisabled={false}
         />
-        <RunHeader
-          s={s}
-          times={times}
-          now={now}
-          onPrimary={primary}
-          onTab={(tab) => dispatch({ type: "tab", tab })}
-        />
-        {tab === "diff" && <DiffView s={s} cypher={cypher} />}
-        {tab === "drafts" && <DraftsView s={s} />}
-        {/* Hidden rather than unmounted on the other tabs, so the graph keeps its canvas. */}
-        <div
-          className={cn(
-            "flex min-h-0 gap-2.5 max-[1000px]:flex-col",
-            tab !== "overview" && "hidden",
-          )}
-        >
+        {/* The ticket list runs the full height on the left; the run header
+            and the stage share the column to its right. */}
+        <div className="flex min-h-0 gap-2.5 max-[1000px]:flex-col">
           <SpanTree s={s} onSelect={select} rail={rail} onToggle={() => setRail((r) => !r)} />
-          <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-panel max-[1000px]:min-h-[640px]">
-            <div className="flex h-11 shrink-0 items-center justify-between border-b border-rule px-3.5 font-sans font-medium">
-              Provenance
-              <ViewSwitch view={view} onView={setView} />
-            </div>
-            <div className="relative min-h-0 flex-1">
-              {view === "3d" ? (
-                <Suspense fallback={<div className="absolute inset-0 bg-canvas" />}>
-                  <Stack3D s={s} onSelect={select} inset={drawer ? 396 : 0} />
-                </Suspense>
-              ) : (
-                <GraphView s={s} onSelect={select} inset={drawer ? 396 : 0} />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5">
+            <RunHeader
+              s={s}
+              times={times}
+              now={now}
+              onPrimary={primary}
+              onTab={(tab) => dispatch({ type: "tab", tab })}
+            />
+            {tab === "diff" && <DiffView s={s} cypher={cypher} />}
+            {tab === "drafts" && <DraftsView s={s} />}
+            {/* Hidden rather than unmounted on the other tabs, so the graph keeps its canvas. */}
+            <section
+              className={cn(
+                "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-panel max-[1000px]:min-h-[640px]",
+                tab !== "overview" && "hidden",
               )}
-              <Inspector
-                s={s}
-                cypher={cypher}
-                open={drawer}
-                onClose={() => {
-                  select(null);
-                  setDismissed(s.phase);
-                }}
-              />
-            </div>
-            <Dock s={s} onSelect={select} />
-          </section>
+            >
+              <div className="flex h-11 shrink-0 items-center justify-between border-b border-rule px-3.5 font-sans font-medium">
+                Provenance
+                <div className="flex items-center gap-5">
+                  <ProgressStrip s={s} />
+                  <ViewSwitch view={view} onView={setView} />
+                </div>
+              </div>
+              <div className="relative min-h-0 flex-1">
+                {view === "3d" ? (
+                  <Suspense fallback={<div className="absolute inset-0 bg-canvas" />}>
+                    <Stack3D s={s} onSelect={select} inset={drawer ? 396 : 0} />
+                  </Suspense>
+                ) : (
+                  <GraphView s={s} onSelect={select} inset={drawer ? 396 : 0} />
+                )}
+                <Inspector
+                  s={s}
+                  cypher={cypher}
+                  open={drawer}
+                  onClose={() => {
+                    select(null);
+                    setDismissed(s.phase);
+                  }}
+                />
+              </div>
+              <Dock s={s} onSelect={select} />
+            </section>
+          </div>
         </div>
         <Dialog open={showCypher} onOpenChange={setShowCypher}>
           <DialogContent title="Cypher kintsugi runs">

@@ -278,9 +278,7 @@ export function RunHeader({
               <TabsTrigger value="drafts">Drafts</TabsTrigger>
             </TabsList>
           </Tabs>
-        ) : (
-          <ProgressStrip s={s} />
-        )}
+        ) : null}
         {button}
       </div>
     );
@@ -368,7 +366,7 @@ const CELL: Record<UiStatus, string> = {
   pending: "border-dashed border-faint opacity-80",
 };
 
-function ProgressStrip({ s }: { s: State }) {
+export function ProgressStrip({ s }: { s: State }) {
   const cells = strip(s);
   if (cells.length === 0) return null;
   const resolved = cells.filter((c) => !["pending", "running", "ok"].includes(c.status)).length;
