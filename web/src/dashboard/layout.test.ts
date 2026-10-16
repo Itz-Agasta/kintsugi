@@ -39,8 +39,8 @@ describe("layout", () => {
   const { pos, kept } = layout(g, null);
   const p = (id: string) => pos.get(id)!;
 
-  it("puts research left of every ticket column", () => {
-    for (const id of ["a2", "a3", "a4", "a6", "a7", "a8"]) expect(p("a1").x).toBeLessThan(p(id).x);
+  it("puts research above the ticket columns, centred on them", () => {
+    expect(p("a1").x).toBe((p("a2").x + p("a8").x) / 2);
   });
   it("puts a ticket's actions in one column, by lane", () => {
     expect(p("a2").x).toBe(p("a3").x);

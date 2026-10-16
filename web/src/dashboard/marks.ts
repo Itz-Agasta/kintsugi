@@ -75,7 +75,9 @@ export function labelFor(n: GraphNode, g: Graph, status?: UiStatus): string {
       text = `${String(p.key)} v${String(p.version)}`;
       break;
     case "Effect":
-      text = p.kind === "refund" ? `$${String(p.amount)}` : String(p.kind);
+      // An email the repair drafted but never sent is a draft.
+      text =
+        p.kind === "refund" ? `$${String(p.amount)}` : p.sent === false ? "draft" : String(p.kind);
       break;
     default: {
       if (p.ticket_id) {
@@ -92,7 +94,7 @@ export function labelFor(n: GraphNode, g: Graph, status?: UiStatus): string {
 
 const CHAR_W = 6.9; // Fragment Mono at 11.5px
 export function pillWidth(label: string): number {
-  return Math.round(30 + label.replaceAll(STROKE, "").length * CHAR_W);
+  return Math.round(36 + label.replaceAll(STROKE, "").length * CHAR_W);
 }
 
 const svgCache = new Map<string, string>();
@@ -142,7 +144,7 @@ export function stylesheet(): StylesheetJson {
         "font-size": 11.5,
         "text-valign": "center",
         "text-halign": "center",
-        "text-margin-x": 8,
+        "text-margin-x": 10,
         "background-width": 12,
         "background-height": 12,
         "background-position-x": 9,
@@ -155,6 +157,7 @@ export function stylesheet(): StylesheetJson {
       },
     },
     { selector: ".kind-fact", style: { "corner-radius": "12px" } },
+    { selector: ".kind-effect", style: { height: 20, "font-size": 10.5 } },
     { selector: ".kind-source, .kind-fact", style: { color: C.text } },
     { selector: ".st-ok", style: { opacity: 0.45 } },
     {

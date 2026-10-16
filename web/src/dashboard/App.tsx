@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Footer } from "@/components/dashboard/Footer";
+import { Graph as GraphView } from "@/components/dashboard/Graph";
 import { ChromeStrip, RunHeader, type Times } from "@/components/dashboard/Header";
 import { LogStrip } from "@/components/dashboard/LogStrip";
 import { SpanTree } from "@/components/dashboard/SpanTree";
@@ -190,7 +191,7 @@ export default function App() {
                 what each action read, and who it handed off to
               </small>
             </div>
-            <div className="min-h-[300px] flex-1 bg-canvas" />
+            <GraphView s={s} onSelect={select} />
             <LogStrip log={s.log} />
           </section>
           <aside className="min-h-0 overflow-auto rounded-lg border border-rule bg-panel p-4 font-sans text-sm text-muted">

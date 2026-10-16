@@ -15,9 +15,11 @@ export const LANES = [
 export const LANE_H = 104;
 export const COL_W = 110;
 export const SLOT = 70;
-// Research columns are wider: their sources carry full ids.
-export const RESEARCH_W = 180;
-const EFFECT_GAP = 30;
+// Research sits above the tickets, spread across their columns, at least this
+// far apart: their sources carry full ids.
+export const RESEARCH_W = 200;
+// Effects of one ticket stack in its column, this far apart (not stretched).
+export const EFFECT_GAP = 24;
 
 export function laneOf(n: GraphNode): number | null {
   switch (n.label) {
@@ -44,7 +46,7 @@ const seq = (n: GraphNode) => Number(n.props.seq ?? 0);
 export function layout(
   g: Graph,
   focus: string[] | null,
-): { pos: Map<string, Pos>; kept: { x: number; count: number } | null } {
+): { pos: Map<string, Pos>; kept: { x: number; count: number; tickets: string[] } | null } {
   const pos = new Map<string, Pos>();
   const acts = g.nodes.filter((n) => n.label === "Action").sort((a, b) => seq(a) - seq(b));
   const research = acts.filter((n) => !n.props.ticket_id);
@@ -61,9 +63,10 @@ export function layout(
     : tickets;
 
   const colX = new Map<string, number>();
-  const start = research.length * RESEARCH_W;
-  shown.forEach((t, i) => colX.set(t, start + i * COL_W));
-  research.forEach((a, i) => pos.set(a.id, { x: i * RESEARCH_W, y: LANE_H }));
+  shown.forEach((t, i) => colX.set(t, i * COL_W));
+  const gap = Math.max(RESEARCH_W, ((shown.length - 1) * COL_W) / Math.max(research.length - 1, 1));
+  const r0 = ((shown.length - 1) * COL_W - (research.length - 1) * gap) / 2;
+  research.forEach((a, i) => pos.set(a.id, { x: r0 + i * gap, y: LANE_H }));
 
   // Ticket actions, splitting a lane slot shared by an original and its replacement.
   const slots = new Map<string, GraphNode[]>();
@@ -98,10 +101,8 @@ export function layout(
       pos.set(e.to, { x: from.x + i * SLOT, y: 2 * LANE_H });
     }
     if (e.type === "CAUSED") {
-      effects.set(from.x, [
-        ...(effects.get(from.x) ?? []),
-        { id: e.to, seq: seqById.get(e.from) ?? 0 },
-      ]);
+      const x = colX.get(acts.find((a) => a.id === e.from)?.props.ticket_id as string) ?? from.x;
+      effects.set(x, [...(effects.get(x) ?? []), { id: e.to, seq: seqById.get(e.from) ?? 0 }]);
     }
   }
   for (const [x, list] of effects) {
@@ -111,7 +112,7 @@ export function layout(
     );
   }
 
-  const folded = tickets.length - shown.length;
-  const kept = inFocus ? { x: start + shown.length * COL_W, count: folded } : null;
+  const folded = tickets.filter((t) => !shown.includes(t));
+  const kept = inFocus ? { x: shown.length * COL_W, count: folded.length, tickets: folded } : null;
   return { pos, kept };
 }
