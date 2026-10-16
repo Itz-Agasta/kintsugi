@@ -158,6 +158,17 @@ MATCH p = (s:Source {id: $src})<-[:INGESTED]-(:Action)-[:FEEDS|HANDED_OFF*0..]->
 WITH p ORDER BY length(p) LIMIT 1
 RETURN [n IN nodes(p) | n.id], [r IN relationships(p) | [startNode(r).id, type(r), endNode(r).id]]`
 
+// ActionDetail is everything the inspector shows for one action: what it read,
+// wrote, handed off and caused, and the RERAN edge if a repair re-ran it.
+const ActionDetail = `
+MATCH (a:Action {id: $id})
+RETURN properties(a),
+  [(a)-[:READ]->(f:Fact) | properties(f)],
+  [(a)-[:WROTE]->(f:Fact) | properties(f)],
+  [(a)-[:HANDED_OFF]->(c:Action) | properties(c)],
+  [(a)-[:CAUSED]->(e:Effect) | properties(e)],
+  [(:Repair)-[r:RERAN]->(a) | properties(r)]`
+
 // Repair engine bookkeeping.
 
 // RepairCount guards against a second repair on the same graph, which the
