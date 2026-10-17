@@ -300,6 +300,11 @@ func (s *Server) runStream(w http.ResponseWriter, r *http.Request, g *falkordb.G
 		send("error", map[string]string{"message": err.Error()})
 		return
 	}
+	// The MCP tools trust only a run that got this far.
+	if _, err := g.Query(store.MarkBaseline, nil, nil); err != nil {
+		send("error", map[string]string{"message": err.Error()})
+		return
+	}
 	send("done", map[string]string{"graph": g.Id})
 }
 

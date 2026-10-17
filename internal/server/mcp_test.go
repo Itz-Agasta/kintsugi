@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Itz-Agasta/kintsugi/internal/server"
+	"github.com/Itz-Agasta/kintsugi/internal/store/storetest"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -189,5 +190,29 @@ func TestMCPRepair(t *testing.T) {
 	// A second repair of the same session must not break the endpoint.
 	if _, err := callTool(t, ts.URL, "repair", args); err != nil {
 		t.Errorf("second repair: %v", err)
+	}
+}
+
+func TestMCPRebuildsUnfinishedRun(t *testing.T) {
+	_, ts, cfg := newServer(t, nil)
+	sid := randID()
+	// A run cut off halfway leaves actions behind but never finishes.
+	if _, err := storetest.DB(t).SelectGraph(cfg.Prefix+sid).Query("CREATE (:Action {id: 'half-done'})", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if out := blastRadius(t, ts.URL, sid); out.Count != 25 {
+		t.Errorf("blast radius %d, want 25 from a full run", out.Count)
+	}
+}
+
+func TestMCPKeepsDashboardRun(t *testing.T) {
+	_, ts, _ := newServer(t, nil)
+	sid := randID()
+	stream(t, ts.URL+"/api/run/stream?session="+sid)
+	var before []string
+	getJSON(t, ts.URL+"/api/blast?session="+sid+"&source="+poisoned, &before)
+	out := blastRadius(t, ts.URL, sid)
+	if out.Count != len(before) || out.Actions[0].ID != before[0] {
+		t.Errorf("MCP re-recorded the dashboard run: %d actions, first %s; want %d, first %s", out.Count, out.Actions[0].ID, len(before), before[0])
 	}
 }

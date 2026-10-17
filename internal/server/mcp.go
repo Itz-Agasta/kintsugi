@@ -16,7 +16,7 @@ import (
 
 // The MCP tools act on a dashboard session's graph, so an agent and the UI
 // can look at the same run. Each call takes the session lock, and a session
-// with no run yet gets the poisoned scenario recorded first.
+// with no finished run gets the poisoned scenario recorded first.
 
 const sourceHint = " The scenario's poisoned source is partner-blog/policy-update."
 
@@ -37,15 +37,15 @@ func (s *Server) mcpHandler() http.Handler {
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, &mcp.StreamableHTTPOptions{Stateless: true})
 }
 
-// withRun locks the session's graph, records the scenario if the graph has
-// no actions, and calls f with it.
+// withRun locks the session's graph, records the scenario unless a finished
+// run is already there, and calls f with it.
 func (s *Server) withRun(ctx context.Context, session string, f func(*falkordb.Graph) error) error {
 	g, release, err := s.acquire(session, true)
 	if err != nil {
 		return err
 	}
 	defer release()
-	res, err := rows(g, store.Counts, nil)
+	res, err := rows(g, store.BaselineDone, nil)
 	if err != nil {
 		return err
 	}
@@ -54,6 +54,9 @@ func (s *Server) withRun(ctx context.Context, session string, f func(*falkordb.G
 			return err
 		}
 		if err := scenario.Run(ctx, g, true, s.w, s.d, nil); err != nil {
+			return err
+		}
+		if _, err := g.Query(store.MarkBaseline, nil, nil); err != nil {
 			return err
 		}
 	}
