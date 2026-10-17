@@ -133,3 +133,61 @@ func TestMCPBadSession(t *testing.T) {
 		t.Errorf("got IsError=%v %q, want the session rule", res.IsError, text(res))
 	}
 }
+
+func TestMCPExplainPath(t *testing.T) {
+	_, ts, _ := newServer(t, nil)
+	sid := randID()
+	b := blastRadius(t, ts.URL, sid)
+	last := b.Actions[len(b.Actions)-1].ID
+	var out struct {
+		Nodes []string                          `json:"nodes"`
+		Edges []struct{ From, Type, To string } `json:"edges"`
+		Path  string                            `json:"path"`
+	}
+	res, err := callTool(t, ts.URL, "explain_path", map[string]any{"session": sid, "source": poisoned, "action": last})
+	structured(t, res, err, &out)
+	if out.Nodes[0] != poisoned || out.Nodes[len(out.Nodes)-1] != last {
+		t.Errorf("nodes %v, want %s to %s", out.Nodes, poisoned, last)
+	}
+	if len(out.Edges) != len(out.Nodes)-1 {
+		t.Errorf("%d edges for %d nodes", len(out.Edges), len(out.Nodes))
+	}
+	if !strings.HasPrefix(out.Path, poisoned+" <-INGESTED- ") || !strings.HasSuffix(out.Path, " "+last) {
+		t.Errorf("path %q", out.Path)
+	}
+}
+
+func TestMCPExplainPathNoPath(t *testing.T) {
+	_, ts, _ := newServer(t, nil)
+	res, err := callTool(t, ts.URL, "explain_path", map[string]any{"session": randID(), "source": poisoned, "action": "nope"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.IsError || !strings.Contains(text(res), "no causal path") {
+		t.Errorf("got IsError=%v %q, want no causal path", res.IsError, text(res))
+	}
+}
+
+func TestMCPRepair(t *testing.T) {
+	_, ts := started(t, nil)
+	sid := randID()
+	var out struct {
+		RepairID  string         `json:"repair_id"`
+		Counts    map[string]int `json:"counts"`
+		DiffMatch bool           `json:"diff_match"`
+		DiffLines []string       `json:"diff_lines"`
+	}
+	args := map[string]any{"session": sid, "source": poisoned}
+	res, err := callTool(t, ts.URL, "repair", args)
+	structured(t, res, err, &out)
+	if !out.DiffMatch || len(out.DiffLines) != 0 {
+		t.Errorf("diff match %v, lines %v", out.DiffMatch, out.DiffLines)
+	}
+	if out.RepairID == "" || out.Counts["poisoned"] == 0 {
+		t.Errorf("repair %q counts %v", out.RepairID, out.Counts)
+	}
+	// A second repair of the same session must not break the endpoint.
+	if _, err := callTool(t, ts.URL, "repair", args); err != nil {
+		t.Errorf("second repair: %v", err)
+	}
+}
