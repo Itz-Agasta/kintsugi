@@ -66,6 +66,8 @@ const CacheGet = `MATCH (r:Response {key: $key}) RETURN r.body`
 
 const CachePut = `MERGE (r:Response {key: $key}) SET r.body = $body`
 
+const CacheAll = `MATCH (r:Response) RETURN r.key, r.body`
+
 // Counts summarises a graph after a run.
 const Counts = `
 OPTIONAL MATCH (a:Action) WITH count(a) AS actions

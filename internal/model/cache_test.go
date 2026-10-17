@@ -1,6 +1,7 @@
 package model_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -53,6 +54,28 @@ func TestCacheDrafter(t *testing.T) {
 		if got, err := d.Draft(context.Background(), "correction_email", model.Ticket{ID: "t1"}, "a", "b"); err != nil || got != "text" {
 			t.Fatalf("got %q %v", got, err)
 		}
+	}
+	if inner.calls != 1 {
+		t.Errorf("inner calls = %d, want 1", inner.calls)
+	}
+}
+
+func TestCacheExportImport(t *testing.T) {
+	inner := &countingDrafter{}
+	from := model.NewCache(storetest.Graph(t))
+	if _, err := from.Drafter(inner, "m", "v1").Draft(context.Background(), "k", model.Ticket{ID: "t1"}, "a", "b"); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := from.Export(&buf); err != nil {
+		t.Fatal(err)
+	}
+	to := model.NewCache(storetest.Graph(t))
+	if n, err := to.Import(&buf); err != nil || n != 1 {
+		t.Fatalf("imported %d, %v", n, err)
+	}
+	if _, err := to.Drafter(inner, "m", "v1").Draft(context.Background(), "k", model.Ticket{ID: "t1"}, "a", "b"); err != nil {
+		t.Fatal(err)
 	}
 	if inner.calls != 1 {
 		t.Errorf("inner calls = %d, want 1", inner.calls)

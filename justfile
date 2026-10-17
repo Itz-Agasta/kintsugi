@@ -45,3 +45,7 @@ web-test:
 deploy-web api:
     cd web && VITE_API_URL={{api}} pnpm exec vp build
     cd web && pnpm exec void deploy --platform cloudflare --dir dist
+
+# Copy the local model response cache to the hosted FalkorDB in .env.cloud.local.
+seed-cache:
+    go run ./cmd/kintsugi cache export | (set -a && . ./.env.cloud.local && go run ./cmd/kintsugi cache import)

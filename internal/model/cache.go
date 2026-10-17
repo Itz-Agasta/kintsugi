@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"slices"
 
 	"github.com/FalkorDB/falkordb-go/v2"
@@ -60,6 +61,48 @@ func (c *Cache) put(k string, v any) error {
 	}
 	_, err = c.g.Query(store.CachePut, map[string]any{"key": k, "body": string(b)}, nil)
 	return err
+}
+
+type entry struct {
+	Key  string `json:"key"`
+	Body string `json:"body"`
+}
+
+// Export writes every cached response to w as JSON lines, so a cache can be
+// moved to another FalkorDB instance.
+func (c *Cache) Export(w io.Writer) error {
+	res, err := c.g.Query(store.CacheAll, nil, nil)
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(w)
+	for res.Next() {
+		r := res.Record()
+		k, _ := r.GetByIndex(0)
+		b, _ := r.GetByIndex(1)
+		if err := enc.Encode(entry{k.(string), b.(string)}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Import reads JSON lines written by Export and returns how many it stored.
+func (c *Cache) Import(r io.Reader) (int, error) {
+	dec := json.NewDecoder(r)
+	n := 0
+	for {
+		var e entry
+		if err := dec.Decode(&e); err == io.EOF {
+			return n, nil
+		} else if err != nil {
+			return n, err
+		}
+		if _, err := c.g.Query(store.CachePut, map[string]any{"key": e.Key, "body": e.Body}, nil); err != nil {
+			return n, err
+		}
+		n++
+	}
 }
 
 type cachedWriter struct {
