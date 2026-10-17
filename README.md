@@ -9,7 +9,7 @@
   <img src="docs/thumbnail.png" alt="kintsugi repairing a poisoned source: the 3D provenance atlas turns the affected edges amber while each ticket resolves to same, changed or superseded, then the diff against a clean run reports a match" width="100%">
 </picture>
 
-[Live demo](https://kintsugi.agasta.site) · [MCP endpoint](#use-it-from-an-ai-agent-mcp) · [How it works](#how-a-repair-works) · [Graph model](#graph-model) · [Run it locally](#run-it-locally)
+[Live demo](https://kintsugi.agasta.site) · [Demo video](https://youtu.be/J3HBqwCQGMY) · [MCP endpoint](#use-it-from-an-ai-agent-mcp) · [How it works](#how-a-repair-works) · [Graph model](#graph-model) · [Run it locally](#run-it-locally)
 
 </div>
 
