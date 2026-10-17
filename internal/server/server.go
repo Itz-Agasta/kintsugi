@@ -68,7 +68,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/action", s.withSession(false, s.action))
 	mux.HandleFunc("GET /api/repair/stream", s.withSession(true, s.repairStream))
 	mux.HandleFunc("POST /api/reset", s.withSession(true, s.reset))
-	return s.cors(mux)
+	// MCP is for agents, not browsers, so it sits outside CORS.
+	top := http.NewServeMux()
+	top.Handle("/mcp", s.mcpHandler())
+	top.Handle("/", s.cors(mux))
+	return top
 }
 
 func (s *Server) cors(next http.Handler) http.Handler {
@@ -93,35 +97,56 @@ var sessionID = regexp.MustCompile(`^[a-z0-9]{8,32}$`)
 // the session lock for the whole request and answers 409 when it is busy.
 func (s *Server) withSession(exclusive bool, h func(http.ResponseWriter, *http.Request, *falkordb.Graph)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id := r.URL.Query().Get("session")
-		if !sessionID.MatchString(id) {
-			http.Error(w, "session must be 8 to 32 lowercase letters or digits", http.StatusBadRequest)
+		g, release, err := s.acquire(r.URL.Query().Get("session"), exclusive)
+		switch {
+		case errors.Is(err, errBadSession):
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
-		}
-		sess, err := s.session(id)
-		if err != nil {
+		case errors.Is(err, errBusy), errors.Is(err, errStale):
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		case err != nil:
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			return
 		}
-		if exclusive {
-			if !sess.mu.TryLock() {
-				http.Error(w, "this session is busy", http.StatusConflict)
-				return
-			}
-			// A reset between session() and TryLock leaves sess stale, and a
-			// newer request may already own the graph under a new session.
-			s.mu.Lock()
-			current := s.sessions[id] == sess
-			s.mu.Unlock()
-			if !current {
-				sess.mu.Unlock()
-				http.Error(w, "this session was reset, try again", http.StatusConflict)
-				return
-			}
-			defer sess.mu.Unlock()
-		}
-		h(w, r, s.db.SelectGraph(s.cfg.Prefix+id))
+		defer release()
+		h(w, r, g)
 	}
+}
+
+var (
+	errBadSession = errors.New("session must be 8 to 32 lowercase letters or digits")
+	errBusy       = errors.New("this session is busy")
+	errStale      = errors.New("this session was reset, try again")
+)
+
+// acquire returns the session's graph. With exclusive set it also takes the
+// session lock, which release gives back; runs, repairs and resets need it.
+func (s *Server) acquire(id string, exclusive bool) (*falkordb.Graph, func(), error) {
+	if !sessionID.MatchString(id) {
+		return nil, nil, errBadSession
+	}
+	sess, err := s.session(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	g := s.db.SelectGraph(s.cfg.Prefix + id)
+	if !exclusive {
+		return g, func() {}, nil
+	}
+	if !sess.mu.TryLock() {
+		return nil, nil, errBusy
+	}
+	// A reset between session() and TryLock leaves sess stale, and a
+	// newer request may already own the graph under a new session.
+	s.mu.Lock()
+	current := s.sessions[id] == sess
+	s.mu.Unlock()
+	if !current {
+		sess.mu.Unlock()
+		return nil, nil, errStale
+	}
+	return g, sess.mu.Unlock, nil
 }
 
 var errFull = errors.New("all demo slots are busy, try again in a minute")
@@ -272,6 +297,11 @@ func (s *Server) runStream(w http.ResponseWriter, r *http.Request, g *falkordb.G
 		pause(r, s.cfg.RunPace)
 	}
 	if err := scenario.Run(r.Context(), g, true, s.w, s.d, after); err != nil {
+		send("error", map[string]string{"message": err.Error()})
+		return
+	}
+	// The MCP tools trust only a run that got this far.
+	if _, err := g.Query(store.MarkBaseline, nil, nil); err != nil {
 		send("error", map[string]string{"message": err.Error()})
 		return
 	}
