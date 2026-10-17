@@ -172,13 +172,14 @@ function Scene({
   s,
   onSelect,
   focusLane,
-  autoFrame,
+  grabs,
   labelEls,
 }: {
   s: State;
   onSelect: (id: string | null) => void;
   focusLane: number | null;
-  autoFrame: boolean;
+  // Counts the times the viewer grabbed the orbit controls.
+  grabs: React.RefObject<number>;
   labelEls: React.RefObject<Map<string, HTMLDivElement>>;
 }) {
   const fg = useRef<
@@ -257,12 +258,37 @@ function Scene({
   const hi = useMemo(() => new THREE.Vector3(), []);
   const mid = useMemo(() => new THREE.Vector3(), []);
   const p = useMemo(() => new THREE.Vector3(), []);
+  // Selecting a node flies the camera to it and keeps it centred while the
+  // simulation moves it. Clearing the selection eases back out to the whole
+  // graph. A drag or zoom hands the distance back to the viewer.
+  const fit = useRef(true);
+  const near = useRef(false);
+  const seen = useRef(0);
+  useEffect(() => {
+    near.current = s.selected != null;
+    if (s.selected == null) fit.current = true;
+  }, [s.selected]);
   useFrame(() => {
     fg.current?.tickFrame();
-    // While the view drifts on its own, keep the whole graph framed: the orbit
-    // centre moves to the middle of its bounding box and the camera eases to
-    // a distance that fits it. Once the viewer takes over, they frame it.
-    if (!controls || !autoFrame || nodes.current.size === 0) return;
+    if (!controls || nodes.current.size === 0) return;
+    if (grabs.current !== seen.current) {
+      seen.current = grabs.current;
+      fit.current = false;
+      near.current = false;
+    }
+    const sel = s.selected ? nodes.current.get(s.selected) : undefined;
+    if (sel) {
+      mid.set(sel.x ?? 0, sel.y ?? 0, sel.z ?? 0);
+      controls.target.lerp(mid, 0.08);
+      const off = camera.position.clone().sub(controls.target);
+      if (near.current) off.setLength(off.length() + (200 - off.length()) * 0.06);
+      camera.position.copy(controls.target).add(off);
+      controls.update();
+      return;
+    }
+    // Otherwise keep the whole graph framed: the orbit centre moves to the
+    // middle of its bounding box and the camera eases to a distance that fits.
+    if (!fit.current) return;
     lo.set(Infinity, Infinity, Infinity);
     hi.set(-Infinity, -Infinity, -Infinity);
     for (const n of nodes.current.values()) {
@@ -499,6 +525,10 @@ export function Atlas3D({
   inset?: number;
 }) {
   const [spin, setSpin] = useState(true);
+  const grabs = useRef(0);
+  useEffect(() => {
+    if (s.selected) setSpin(false);
+  }, [s.selected]);
   const [focusLane, setFocusLane] = useState<number | null>(null);
   const labelEls = useRef(new Map<string, HTMLDivElement>());
   const keep = (key: string) => (el: HTMLDivElement | null) => {
@@ -520,20 +550,17 @@ export function Atlas3D({
       >
         <color attach="background" args={["#0B0A0E"]} />
         <Dust />
-        <Scene
-          s={s}
-          onSelect={onSelect}
-          focusLane={focusLane}
-          autoFrame={spin}
-          labelEls={labelEls}
-        />
+        <Scene s={s} onSelect={onSelect} focusLane={focusLane} grabs={grabs} labelEls={labelEls} />
         <OrbitControls
           makeDefault
           enableDamping
           dampingFactor={0.08}
           autoRotate={spin}
           autoRotateSpeed={0.35}
-          onStart={() => setSpin(false)}
+          onStart={() => {
+            grabs.current++;
+            setSpin(false);
+          }}
         />
         <EffectComposer>
           <Bloom
