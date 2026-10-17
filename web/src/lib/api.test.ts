@@ -41,8 +41,8 @@ describe("apiUrl", () => {
     expect(u.searchParams.get("source")).toBe(SOURCE);
     expect(apiUrl("/api/blast", { source: SOURCE })).toContain("partner-blog%2Fpolicy-update");
   });
-  it("sends no session to /healthz or /api/cypher", () => {
-    expect(apiUrl("/healthz")).not.toContain("session=");
+  it("sends no session to /api/health or /api/cypher", () => {
+    expect(apiUrl("/api/health")).not.toContain("session=");
     expect(apiUrl("/api/cypher")).not.toContain("session=");
   });
 });

@@ -3,7 +3,7 @@
 const BASE: string = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 const KEY = "kintsugi.session";
 const VALID = /^[a-z0-9]{16}$/;
-const NO_SESSION = new Set(["/healthz", "/api/cypher"]);
+const NO_SESSION = new Set(["/api/health", "/api/cypher"]);
 
 let fallback: string | null = null;
 
@@ -71,7 +71,7 @@ export async function post(path: string): Promise<void> {
 
 export async function health(): Promise<boolean> {
   try {
-    return (await fetch(apiUrl("/healthz"))).ok;
+    return (await fetch(apiUrl("/api/health"))).ok;
   } catch {
     return false;
   }

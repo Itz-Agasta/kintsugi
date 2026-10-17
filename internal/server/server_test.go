@@ -160,8 +160,8 @@ func TestCypherAndHealth(t *testing.T) {
 	if code := getJSON(t, ts.URL+"/api/cypher", &q); code != 200 || !strings.Contains(q["BlastRadius"], "FEEDS|HANDED_OFF") {
 		t.Errorf("cypher: HTTP %d, BlastRadius = %q", code, q["BlastRadius"])
 	}
-	if code := getJSON(t, ts.URL+"/healthz", nil); code != 200 {
-		t.Errorf("healthz: HTTP %d", code)
+	if code := getJSON(t, ts.URL+"/api/health", nil); code != 200 {
+		t.Errorf("health: HTTP %d", code)
 	}
 }
 

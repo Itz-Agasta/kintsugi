@@ -59,7 +59,7 @@ func New(db *falkordb.FalkorDB, w model.Writer, d model.Decider, dr model.Drafte
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "ok") })
+	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "ok") })
 	mux.HandleFunc("GET /api/cypher", s.cypher)
 	mux.HandleFunc("GET /api/run/stream", s.withSession(true, s.runStream))
 	mux.HandleFunc("GET /api/graph", s.withSession(false, s.graph))
