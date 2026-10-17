@@ -38,7 +38,8 @@
     "@vitejs/plugin-react": "^6.1.1",
     "typescript": "~6.0.2",
     "vite": "catalog:",
-    "vite-plus": "catalog:"
+    "vite-plus": "catalog:",
+    "void": "^1.1.11"
   },
   "devEngines": {
     "packageManager": {

@@ -40,3 +40,8 @@ web:
 
 web-test:
     cd web && pnpm exec vp test
+
+# Build the dashboard against the hosted API and deploy it to Cloudflare.
+deploy-web api:
+    cd web && VITE_API_URL={{api}} pnpm exec vp build
+    cd web && pnpm exec void deploy --platform cloudflare --dir dist
