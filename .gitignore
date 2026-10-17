@@ -3,3 +3,7 @@
 node_modules/
 dist/
 /bin/
+
+# Void deploy state
+web/.void/
+web/.void-wrangler.jsonc

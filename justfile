@@ -40,3 +40,15 @@ web:
 
 web-test:
     cd web && pnpm exec vp test
+
+# Build the dashboard against the hosted API and deploy it to Cloudflare.
+# CF_API_TOKEN is the Workers AI token; unset it so Void uses the deploy login.
+deploy-web api:
+    cd web && VITE_API_URL={{api}} pnpm exec vp build
+    cd web && env -u CF_API_TOKEN pnpm exec void deploy --platform cloudflare --dir dist
+
+# Copy the local model response cache to the hosted FalkorDB in .env.cloud.local.
+seed-cache:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    go run ./cmd/kintsugi cache export | (set -a && . ./.env.cloud.local && go run ./cmd/kintsugi cache import)

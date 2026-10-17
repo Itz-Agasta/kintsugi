@@ -9,13 +9,14 @@ import (
 	"github.com/FalkorDB/falkordb-go/v2"
 )
 
-// Connect opens a client from FALKORDB_HOST, FALKORDB_PORT and FALKORDB_PASSWORD.
+// Connect opens a client from FALKORDB_HOST, FALKORDB_PORT, FALKORDB_USER and
+// FALKORDB_PASSWORD.
 func Connect() (*falkordb.FalkorDB, error) {
 	opt := &falkordb.ConnectionOption{
 		Addr: cmp.Or(os.Getenv("FALKORDB_HOST"), "localhost") + ":" + cmp.Or(os.Getenv("FALKORDB_PORT"), "6379"),
 	}
 	if pw := os.Getenv("FALKORDB_PASSWORD"); pw != "" {
-		opt.Username = "falkordb"
+		opt.Username = cmp.Or(os.Getenv("FALKORDB_USER"), "falkordb")
 		opt.Password = pw
 	}
 	return falkordb.FalkorDBNew(opt)

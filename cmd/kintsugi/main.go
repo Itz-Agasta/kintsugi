@@ -26,7 +26,8 @@ const usage = `usage:
   kintsugi serve
   kintsugi scenario <clean|demo>
   kintsugi repair <graph> <source>
-  kintsugi diff <graph> <graph>`
+  kintsugi diff <graph> <graph>
+  kintsugi cache <export|import>`
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -50,6 +51,12 @@ func run(args []string) error {
 		return runRepair(ctx, db, args[1], args[2])
 	case len(args) == 3 && args[0] == "diff":
 		return runDiff(db, args[1], args[2])
+	case len(args) == 2 && args[0] == "cache" && args[1] == "export":
+		return model.NewCache(db.SelectGraph("llm_cache")).Export(os.Stdout)
+	case len(args) == 2 && args[0] == "cache" && args[1] == "import":
+		n, err := model.NewCache(db.SelectGraph("llm_cache")).Import(os.Stdin)
+		fmt.Fprintf(os.Stderr, "imported %d responses\n", n)
+		return err
 	}
 	return fmt.Errorf("%s", usage)
 }
