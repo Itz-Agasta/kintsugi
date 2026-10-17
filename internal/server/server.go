@@ -68,7 +68,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/action", s.withSession(false, s.action))
 	mux.HandleFunc("GET /api/repair/stream", s.withSession(true, s.repairStream))
 	mux.HandleFunc("POST /api/reset", s.withSession(true, s.reset))
-	return s.cors(mux)
+	// MCP is for agents, not browsers, so it sits outside CORS.
+	top := http.NewServeMux()
+	top.Handle("/mcp", s.mcpHandler())
+	top.Handle("/", s.cors(mux))
+	return top
 }
 
 func (s *Server) cors(next http.Handler) http.Handler {
