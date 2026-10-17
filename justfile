@@ -49,4 +49,6 @@ deploy-web api:
 
 # Copy the local model response cache to the hosted FalkorDB in .env.cloud.local.
 seed-cache:
+    #!/usr/bin/env bash
+    set -euo pipefail
     go run ./cmd/kintsugi cache export | (set -a && . ./.env.cloud.local && go run ./cmd/kintsugi cache import)
