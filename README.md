@@ -210,20 +210,16 @@ Without API keys, deterministic fake models stand in for Gemini and Workers AI, 
 | `just seed-cache` | copy the local response cache to a hosted FalkorDB |
 | `just deploy-web <api-url>` | build the dashboard against an API and deploy it |
 
-## Deploy
-
-| Part | Where | How |
-|---|---|---|
-| FalkorDB | FalkorDB Cloud | an instance in the same region as the API; set `FALKORDB_HOST`, `FALKORDB_PORT`, `FALKORDB_USER`, `FALKORDB_PASSWORD` |
-| API | Google Cloud Run | the image from the `Dockerfile` (a static Go binary on distroless), one instance, a 15 minute request timeout for the streams, `ALLOW_ORIGINS` set to the dashboard origin |
-| Dashboard | Cloudflare Workers | `just deploy-web <api-url>` |
-
 ## Limits
 
 - kintsugi sees what goes through the recorder. A read that bypasses it, such as an agent quoting the poisoned page from its own context without a recorded read, is not in the graph and so is not repaired.
 - The bad source is named by a person. Finding it is a separate problem.
 - Effects outside the system are listed with a drafted correction, never reversed or sent automatically.
-- The scenario is synthetic and small: 24 tickets and four agents, with no real customers, pages or payments. The numbers above describe that toy run, not a benchmark.
+- The scenario is intentionally small & synthetic for a fast demo and live play: 24 tickets and 4 agents. However, it establishes the harness concept for scaling to larger scenarios.
+
+## AI disclosure
+
+I used agents, mainly OpenCode. The design is mine: it comes from my reading of [RETRO](https://www.usenix.org/conference/osdi10/intrusion-recovery-using-selective-re-execution) & I made the graph model and repair decisions. I built the Go core (recorder, repair engine, Cypher) with AI help and reviewed every query against a real FalkorDB, which is how I found [falkordb-go#123](https://github.com/FalkorDB/falkordb-go/issues/123), [#124](https://github.com/FalkorDB/falkordb-go/issues/124) and [FalkorDB#3400](https://github.com/FalkorDB/FalkorDB/issues/3400). The dashboard in `web/` was mostly written by AI from my taste direction. Also the demo video was put together in hyperframes using ai.
 
 ## Prior art
 
